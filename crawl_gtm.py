@@ -2823,14 +2823,13 @@ def first_run_wizard():
     """Interactive setup wizard for first-time users."""
     console.print(Panel(
         "[bold]Welcome to crawlGTM![/]\n\n"
-        "This wizard will help you configure the required API sessions.\n"
+        "First-run setup: configure your API sessions.\n"
         "You can reconfigure any of these later with:\n"
         "  [cyan]--login[/]           X.com session\n"
         "  [cyan]--bw-login[/]        BuiltWith session\n"
-        "  [cyan]--fofa-setup[/]      FOFA API key\n"
-        "  [cyan]--telegram-setup[/]  Telegram notifications\n\n"
-        "[dim]Press Enter to skip any step you don't need right now.[/]",
-        title="[bold cyan]🔧 First Run Setup[/]",
+        "  [cyan]--fofa-setup[/]      FOFA API key + email\n"
+        "  [cyan]--telegram-setup[/]  Telegram notifications",
+        title="[bold cyan]First Run Setup[/]",
         border_style="cyan",
     ))
 
@@ -2840,41 +2839,29 @@ def first_run_wizard():
         mark_setup_done()
         return
 
-    # Step 1: X.com session
-    console.print("\n[bold]━━━ Step 1/4: X.com Session (for post collection) ━━━[/]")
+    # Step 1: FOFA API key + email (required)
+    console.print("\n[bold]━━━ Step 1/4: FOFA API Key + Email (for GTM discovery) ━━━[/]")
     try:
-        choice = input("  Configure X.com session now? [Y/n]: ").strip().lower()
-        if choice != "n":
-            sm = SessionManager()
-            sm.prompt_login()
-        else:
-            console.print("[dim]  Skipped. Use --login later.[/]")
+        prompt_fofa_setup()
     except (EOFError, KeyboardInterrupt):
         console.print("\n[dim]  Skipped.[/]")
 
-    # Step 2: BuiltWith session
-    console.print("\n[bold]━━━ Step 2/4: BuiltWith Session (for reverse lookup) ━━━[/]")
+    # Step 2: X.com session (required)
+    console.print("\n[bold]━━━ Step 2/4: X.com Session (for post collection) ━━━[/]")
     try:
-        choice = input("  Configure BuiltWith session now? [Y/n]: ").strip().lower()
-        if choice != "n":
-            prompt_bw_login()
-        else:
-            console.print("[dim]  Skipped. Use --bw-login later.[/]")
+        sm = SessionManager()
+        sm.prompt_login()
     except (EOFError, KeyboardInterrupt):
         console.print("\n[dim]  Skipped.[/]")
 
-    # Step 3: FOFA API key
-    console.print("\n[bold]━━━ Step 3/4: FOFA API Key (for GTM discovery) ━━━[/]")
+    # Step 3: BuiltWith session (required)
+    console.print("\n[bold]━━━ Step 3/4: BuiltWith Session (for reverse lookup) ━━━[/]")
     try:
-        choice = input("  Configure FOFA API key now? [Y/n]: ").strip().lower()
-        if choice != "n":
-            prompt_fofa_setup()
-        else:
-            console.print("[dim]  Skipped. Use --fofa-setup later.[/]")
+        prompt_bw_login()
     except (EOFError, KeyboardInterrupt):
         console.print("\n[dim]  Skipped.[/]")
 
-    # Step 4: Telegram
+    # Step 4: Telegram (optional)
     console.print("\n[bold]━━━ Step 4/4: Telegram Notifications (optional) ━━━[/]")
     try:
         choice = input("  Configure Telegram bot now? [y/N]: ").strip().lower()
@@ -2896,12 +2883,17 @@ def first_run_wizard():
     fofa = load_fofa_key()
     tg = TelegramNotifier()
 
+    fofa_email = load_fofa_email()
+    fofa_status = "[green]✓ configured[/]" if fofa else "[yellow]✗ not configured[/]"
+    if fofa and fofa_email:
+        fofa_status += f" [dim]({fofa_email})[/]"
+
     console.print(Panel(
+        f"[bold]FOFA:[/]      {fofa_status}\n"
         f"[bold]X.com:[/]     {'[green]✓ configured[/]' if saved else '[yellow]✗ not configured[/]'}\n"
         f"[bold]BuiltWith:[/] {'[green]✓ configured[/]' if bw else '[yellow]✗ not configured[/]'}\n"
-        f"[bold]FOFA:[/]      {'[green]✓ configured[/]' if fofa else '[yellow]✗ not configured[/]'}\n"
         f"[bold]Telegram:[/]  {'[green]✓ configured[/]' if tg.is_configured else '[dim]✗ not configured[/]'}",
-        title="[bold green]✅ Setup Complete[/]",
+        title="[bold green]Setup Complete[/]",
         border_style="green",
     ))
     console.print()
