@@ -1,0 +1,38 @@
+# GTM IDs collected from @sdcyberresearch X.com posts
+# Source: https://x.com/sdcyberresearch
+# Collected via Wayback Machine + Web Search
+
+# Post 1: Magecart chain attack (status/1816105654416748722)
+# "A #magecart attack loads by Google Tag Manager chain. GTM-KX36TXD calls GTM-TH2N8L9Z calls GTM-MHJKVDS9 calls logicloo.com"
+GTM-KX36TXD
+GTM-TH2N8L9Z
+GTM-MHJKVDS9
+
+# Post 2: More GTM skimmers (status/1990363294545432712)
+# "More Google Tag Managers that load #magecart scripts: GTM-PWJCCK9B (manuchat.icu), GTM-KRK2SS4 (static5-jquery.com)"
+GTM-PWJCCK9B
+GTM-KRK2SS4
+
+# Post 3: 17 GTM IDs linked to gstatis.co now calling jqueri.at (status/1925172801259933975)
+GTM-NDBZP4W9
+GTM-T93CNFFV
+GTM-WJC24WKC
+GTM-MVRKVG5F
+GTM-TCCZP6LC
+GTM-5VV5ZFS6
+GTM-NWZQS5QC
+GTM-5N3X6KD9
+GTM-KNZTJZ6G
+GTM-P8FMRH5X
+GTM-K9BJ4ZLG
+GTM-5SM7XMJP
+GTM-N8KJJZWW
+GTM-5TX4GBHL
+GTM-P4X2ZPCH
+GTM-MCPLRRJ4
+GTM-NKBWLJ4C
+
+# Post 4: New breed modular attack (from Source Defense blog)
+GTM-NSTTR9L
+GTM-KTZLSGSS
+GTM-W33KS5VH

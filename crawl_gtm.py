@@ -539,6 +539,9 @@ class TelegramNotifier:
         lines = text.split("\n")
         chunk = ""
         for line in lines:
+            # Truncate individual lines that exceed max message size
+            if len(line) > self.MAX_MSG:
+                line = line[: self.MAX_MSG - 20] + "... [truncated]"
             if len(chunk) + len(line) + 1 > self.MAX_MSG:
                 if chunk:
                     self.send(chunk, parse_mode)
@@ -715,7 +718,6 @@ class TelegramNotifier:
             time.sleep(0.3)
 
         # Send JSON file
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         json_files = sorted(Path(output_dir).glob("crawlgtm_*.json"))
         if json_files:
             self.send_document(
@@ -1169,7 +1171,13 @@ class XCollector:
                         link = div.find("a", href=True)
                         post_url = ""
                         if link and "/status/" in str(link.get("href", "")):
-                            post_url = f"https://x.com{link['href']}"
+                            href = link["href"]
+                            if href.startswith("http"):
+                                # Absolute URL from nitter - extract path
+                                path = re.sub(r'^https?://[^/]+', '', href)
+                                post_url = f"https://x.com{path}"
+                            else:
+                                post_url = f"https://x.com{href}"
 
                         self.posts.append({
                             "source": f"nitter:{instance}",
@@ -1190,9 +1198,14 @@ class XCollector:
 
     def _collect_via_google_cache(self):
         """Search Google cache for tweets mentioning GTM."""
+        if not self.username and not self.search_term:
+            return
         console.print("  [dim]→ Trying Google cache/search...[/]")
         try:
-            query = f'site:x.com "{self.username}" "GTM-"'
+            if self.username:
+                query = f'site:x.com "{self.username}" "GTM-"'
+            else:
+                query = f'site:x.com "{self.search_term}" "GTM-"'
             resp = self.session.get(
                 "https://www.google.com/search",
                 params={"q": query, "num": 50},
@@ -1846,9 +1859,14 @@ class GTMReverseLookup:
                             "source": "publicwww",
                             "url": href,
                         })
-                # Fallback: extract domains from page text
+                # Fallback: extract domains from visible text only (not raw HTML)
                 if not results:
-                    for m in re.findall(r'([a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)', resp.text):
+                    page_text = soup.get_text()
+                    for m in re.findall(
+                        r'\b([a-zA-Z0-9-]+\.(?:com|net|org|io|co|br|de|fr|uk|es|it|nl|ru|cn|jp|au|ca|in'
+                        r'|co\.uk|com\.br|com\.au|com\.mx|com\.ar))\b',
+                        page_text,
+                    ):
                         if len(m) > 4:
                             results.append({"domain": m.lower(), "source": "publicwww"})
         except Exception:
@@ -1885,7 +1903,7 @@ class GTMReverseLookup:
                 f"&output=json&fl=original,timestamp,statuscode&limit=50"
                 f"&from=2023&filter=statuscode:200"
             )
-            resp = requests.get(cdx_url, timeout=20)
+            resp = self.session.get(cdx_url, timeout=20)
             if resp.status_code == 200:
                 data = resp.json()
                 if len(data) > 1:
@@ -1894,7 +1912,7 @@ class GTMReverseLookup:
                     for ts in timestamps:
                         try:
                             wb_url = f"https://web.archive.org/web/{ts}/https://www.googletagmanager.com/gtm.js?id={gtm_id}"
-                            wr = requests.head(wb_url, timeout=10, allow_redirects=True)
+                            self.session.head(wb_url, timeout=10, allow_redirects=True)
                             # The referer page won't be in HEAD, but CDX tells us it existed
                         except Exception:
                             pass
@@ -1905,7 +1923,7 @@ class GTMReverseLookup:
                 f"?url=*.com/*&output=json&fl=original&limit=20"
                 f"&filter=original:.*{gtm_id}.*"
             )
-            resp2 = requests.get(cdx_url2, timeout=15)
+            resp2 = self.session.get(cdx_url2, timeout=15)
             if resp2.status_code == 200:
                 data2 = resp2.json()
                 for row in data2[1:] if len(data2) > 1 else []:
@@ -2295,14 +2313,14 @@ def _save_results(results: list[dict], posts: list[dict],
     }
 
     outfile = os.path.join(output_dir, f"crawlgtm_{timestamp}.json")
-    with open(outfile, "w") as f:
+    with open(outfile, "w", encoding="utf-8") as f:
         json.dump(full_output, f, indent=2, default=str)
 
     console.print(f"\n[bold green]💾 Results saved to {outfile}[/]")
 
     # GTM IDs only (for piping)
     ids_file = os.path.join(output_dir, f"gtm_ids_{timestamp}.txt")
-    with open(ids_file, "w") as f:
+    with open(ids_file, "w", encoding="utf-8") as f:
         for r in results:
             f.write(f"{r['gtm_id']}\n")
     console.print(f"[green]💾 GTM IDs saved to {ids_file}[/]")
@@ -2313,7 +2331,7 @@ def _save_results(results: list[dict], posts: list[dict],
         all_domains.update(r.get("domains", []))
     if all_domains:
         dom_file = os.path.join(output_dir, f"domains_{timestamp}.txt")
-        with open(dom_file, "w") as f:
+        with open(dom_file, "w", encoding="utf-8") as f:
             for d in sorted(all_domains):
                 f.write(f"{d}\n")
         console.print(f"[green]💾 Domains saved to {dom_file}[/]")
@@ -2337,22 +2355,34 @@ def _human_size(size_bytes: int) -> str:
 def load_gtm_ids_from_file(filepath: str) -> set[str]:
     """Load GTM IDs from a file (one per line, or mixed text)."""
     ids = set()
-    with open(filepath, "r") as f:
-        content = f.read()
-        for m in GTM_ID_PATTERN.finditer(content):
-            ids.add(m.group(0).upper())
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+            for m in GTM_ID_PATTERN.finditer(content):
+                ids.add(m.group(0).upper())
+    except FileNotFoundError:
+        console.print(f"[red]Error: File not found: {filepath}[/]")
+    except Exception as e:
+        console.print(f"[red]Error reading {filepath}: {e}[/]")
     return ids
 
 
 def load_posts_from_file(filepath: str) -> list[dict]:
     """Load posts from a JSON file."""
-    with open(filepath, "r") as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        return data
-    elif isinstance(data, dict) and "posts" in data:
-        return data["posts"]
-    return []
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict) and "posts" in data:
+            return data["posts"]
+        return []
+    except FileNotFoundError:
+        console.print(f"[red]Error: File not found: {filepath}[/]")
+        return []
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Error: Invalid JSON in {filepath}: {e}[/]")
+        return []
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -2420,10 +2450,21 @@ def setup_logging():
     return logger
 
 
+def _read_pid_file() -> Optional[int]:
+    """Read PID from file, return None if invalid."""
+    if not PID_FILE.exists():
+        return None
+    try:
+        return int(PID_FILE.read_text().strip())
+    except (ValueError, OSError):
+        PID_FILE.unlink(missing_ok=True)
+        return None
+
+
 def scheduler_status():
     """Show scheduler status."""
-    if PID_FILE.exists():
-        pid = int(PID_FILE.read_text().strip())
+    pid = _read_pid_file()
+    if pid is not None:
         try:
             os.kill(pid, 0)
             console.print(f"[bold green]✓ Scheduler running (PID {pid})[/]")
@@ -2446,8 +2487,8 @@ def scheduler_status():
 
 def stop_scheduler():
     """Stop background scheduler."""
-    if PID_FILE.exists():
-        pid = int(PID_FILE.read_text().strip())
+    pid = _read_pid_file()
+    if pid is not None:
         try:
             os.kill(pid, 0)
             os.kill(pid, signal.SIGTERM)
@@ -2529,11 +2570,22 @@ def run_scan(args, sm, history: dict, logger=None) -> dict:
     if args.gtm:
         for gid in args.gtm:
             gid_clean = gid.upper().strip()
-            if GTM_ID_PATTERN.match(gid_clean):
+            if GTM_ID_PATTERN.fullmatch(gid_clean):
                 all_gtm_ids.add(gid_clean)
 
     if args.file:
         all_gtm_ids.update(load_gtm_ids_from_file(args.file))
+
+    if getattr(args, "posts_file", None):
+        try:
+            file_posts = load_posts_from_file(args.posts_file)
+            all_posts.extend(file_posts)
+            texts = [p.get("text", str(p)) for p in file_posts]
+            ids = extract_gtm_ids(texts)
+            all_gtm_ids.update(ids)
+            log(f"Posts file: {len(ids)} GTM IDs from {len(file_posts)} posts")
+        except Exception as e:
+            log(f"Posts file error: {e}")
 
     if args.scan_url:
         for url in args.scan_url:
@@ -2619,15 +2671,16 @@ def run_scan(args, sm, history: dict, logger=None) -> dict:
         for r in results:
             clean.append({k: v for k, v in r.items() if not k.startswith("_")})
         outfile = os.path.join(args.output, f"crawlgtm_{timestamp}.json")
-        with open(outfile, "w") as f:
+        with open(outfile, "w", encoding="utf-8") as f:
             json.dump({"containers": clean, "posts": all_posts}, f, indent=2, default=str)
         log(f"Results saved to {outfile}")
 
     # ── Telegram ──
     tg = TelegramNotifier() if args.telegram else None
-    if tg and tg.is_configured and all_posts:
+    if tg and tg.is_configured:
         source = f"@{args.xuser}" if args.xuser else f"search: {args.search}" if args.search else "scan"
-        tg.notify_posts(all_posts, source)
+        if all_posts:
+            tg.notify_posts(all_posts, source)
         tg.notify_results(results, all_posts, args.output)
         log("Telegram notification sent")
 
@@ -2663,8 +2716,8 @@ def run_scheduler(args, interval_seconds: int):
             sys.exit(1)
 
     # Check if already running
-    if PID_FILE.exists():
-        pid = int(PID_FILE.read_text().strip())
+    pid = _read_pid_file()
+    if pid is not None:
         try:
             os.kill(pid, 0)
             console.print(f"[yellow]⚠ Scheduler already running (PID {pid}). Use --stop first.[/]")
@@ -2715,10 +2768,15 @@ def run_scheduler(args, interval_seconds: int):
     if pid2 > 0:
         sys.exit(0)
 
-    # Redirect stdio
+    # Redirect stdio to /dev/null for proper daemon behavior
+    devnull_r = open(os.devnull, "r")
+    devnull_w = open(os.devnull, "w")
     sys.stdin.close()
-    devnull = open(os.devnull, "r")
-    sys.stdin = devnull
+    sys.stdin = devnull_r
+    sys.stdout.close()
+    sys.stdout = devnull_w
+    sys.stderr.close()
+    sys.stderr = devnull_w
 
     # Write PID
     SESSION_DIR.mkdir(parents=True, exist_ok=True)
@@ -3102,7 +3160,7 @@ Examples:
     if args.gtm:
         for gid in args.gtm:
             gid_clean = gid.upper().strip()
-            if GTM_ID_PATTERN.match(gid_clean):
+            if GTM_ID_PATTERN.fullmatch(gid_clean):
                 all_gtm_ids.add(gid_clean)
             else:
                 console.print(f"[yellow]⚠ Invalid GTM ID format: {gid}[/]")
@@ -3234,7 +3292,7 @@ Examples:
         for r in results:
             clean.append({k: v for k, v in r.items() if not k.startswith("_")})
         outfile = os.path.join(args.output, f"crawlgtm_{timestamp}.json")
-        with open(outfile, "w") as f:
+        with open(outfile, "w", encoding="utf-8") as f:
             json.dump({"containers": clean, "posts": all_posts}, f, indent=2, default=str)
         print(outfile)
 

@@ -3,11 +3,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/version-2.0-7b2ff7.svg" alt="v2.0">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
-  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/scheduler-background-purple.svg" alt="Background Scheduler">
   <img src="https://img.shields.io/badge/reverse--lookup-BuiltWith-ff0080.svg" alt="BuiltWith">
+  <img src="https://img.shields.io/badge/bugs--fixed-17-00d4ff.svg" alt="17 bugs fixed">
 </p>
 
 # crawlGTM
@@ -21,33 +23,35 @@ Automated pipeline to collect malicious GTM container IDs from X.com (Twitter) s
 ## Flow
 
 ```
-X.com Posts → Extract GTM IDs → Analyze Containers → BuiltWith Reverse Lookup → Victim Domains
-     │              │                   │                       │                      │
-     ▼              ▼                   ▼                       ▼                      ▼
-  @researcher   GTM-XXXXXXX      Domains, Scripts,       76 domains found        RED output
-  8 posts       7 IDs found      Pixels, Services        across 6 containers     + JSON + TXT
+X.com Posts --> Extract GTM IDs --> Analyze Containers --> Reverse Lookup --> Victim Domains
+     |               |                    |                     |                  |
+     v               v                    v                     v                  v
+ @researcher    GTM-XXXXXXX        Domains, Scripts,     BuiltWith + 5 OSINT    RED output
+ GraphQL API    Regex + Deep       Pixels, Services      sources queried        JSON + TXT
 ```
 
 ---
 
 ## Features
 
-- **X.com Collection** — Authenticated GraphQL API with dynamic feature extraction from JS bundle
-- **Multi-source Input** — X.com user timeline, search, direct GTM IDs, file, URL scanning
-- **Container Analysis** — Domains, URLs, scripts, pixels, tracking IDs, services, custom HTML, data layer vars, interesting strings
-- **Deep Mode** — Follows linked GTM containers found inside other containers (chain analysis)
-- **BuiltWith Reverse Lookup** — Discovers which websites use each malicious GTM container (authenticated)
-- **Background Scheduler** — `--hours N` (1-12) or `--days N` (1-5), daemonizes after first scan
-- **Deduplication** — Tracks processed posts and GTM IDs, never re-scans what was already done
-- **Telegram Notifications** — Send results to Telegram bot automatically
-- **Session Management** — Auto-prompt for sessions on first run, re-prompt on expiry
+- **X.com Collection** -- Authenticated GraphQL API with dynamic query ID + feature extraction from JS bundle
+- **Multi-source Fallback** -- GraphQL -> Wayback Machine -> Nitter -> Google cache (automatic fallback chain)
+- **Multi-input** -- X.com user timeline, search, direct GTM IDs, file, posts JSON, URL scanning
+- **Container Analysis** -- Domains, URLs, scripts, pixels, tracking IDs (GA4/UA/AW/GTM), 30+ service signatures, custom HTML tags, dataLayer vars, interesting strings (API keys, webhooks, emails)
+- **Deep Mode** -- Follows linked GTM containers found inside other containers (chain analysis)
+- **Reverse Lookup** -- 6 sources: BuiltWith, PublicWWW, SpyOnWeb, Wayback CDX, DuckDuckGo, Google
+- **Async Analysis** -- Parallel container fetching via `aiohttp` + `asyncio`
+- **Background Scheduler** -- `--hours N` (1-12) or `--days N` (1-5), daemonizes after first scan
+- **Deduplication** -- Tracks processed posts and GTM IDs across runs, never re-scans what was already done
+- **Telegram Notifications** -- Send results + files to Telegram bot automatically
+- **Session Management** -- Auto-prompt for X.com / BuiltWith sessions, auto-detect expiry, re-prompt
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/OFJAAAH/crawlGTM.git
+git clone https://github.com/ofjaaah-tools/crawlGTM.git
 cd crawlGTM
 pip install -r requirements.txt
 ```
@@ -63,26 +67,46 @@ rich>=13.0.0
 
 ---
 
+## Quick Start
+
+```bash
+# 1. Setup X.com session (one-time)
+python3 crawl_gtm.py --login
+
+# 2. Analyze specific GTM IDs with deep chain analysis
+python3 crawl_gtm.py --gtm GTM-KX36TXD --deep
+
+# 3. Scan a website for GTM containers
+python3 crawl_gtm.py --scan-url https://example.com --deep
+
+# 4. Load GTM IDs from file
+python3 crawl_gtm.py --file gtm_ids.txt --deep
+
+# 5. Full flow: X.com -> Deep Analysis -> Reverse Lookup
+python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup
+```
+
+---
+
 ## Session Setup
 
-The tool requires authenticated sessions for X.com and BuiltWith. On first execution it will auto-prompt for cookies, but you can also set them up manually.
+The tool requires authenticated sessions for X.com and BuiltWith. On first execution it will auto-prompt for cookies.
 
 ### 1. X.com Session
 
 #### Extract cookies from browser
 
 1. Open **https://x.com** and log in
-2. Press **F12** → DevTools
-3. Go to **Application** → **Cookies** → **https://x.com**
+2. Press **F12** -> DevTools
+3. Go to **Application** -> **Cookies** -> **https://x.com**
 
-**`auth_token`** is HttpOnly — you MUST copy it manually from DevTools:
+**`auth_token`** is HttpOnly -- you MUST copy it manually from DevTools:
 
-> **F12 → Application → Cookies → x.com → auth_token** (double-click value → copy)
+> **F12 -> Application -> Cookies -> x.com -> auth_token** (double-click value -> copy)
 
-**`ct0`** can be extracted via Console. Paste this in **F12 → Console**:
+**`ct0`** can be extracted via Console:
 
 ```javascript
-// ── X.com ct0 Cookie Extraction ──
 (function() {
   var ct0 = '';
   document.cookie.split(';').forEach(function(c) {
@@ -90,7 +114,6 @@ The tool requires authenticated sessions for X.com and BuiltWith. On first execu
     if (p[0] === 'ct0') ct0 = p.slice(1).join('=');
   });
   console.log('%c ct0 = ' + ct0, 'color:lime;font-size:14px');
-  console.log('%c Now copy auth_token from: Application → Cookies → x.com', 'color:yellow;font-size:14px');
   prompt('ct0 (Ctrl+A, Ctrl+C):', ct0);
 })();
 ```
@@ -106,21 +129,12 @@ Session is saved to `~/.crawlgtm/session.json` and reused automatically.
 
 ---
 
-### 2. BuiltWith Session
+### 2. BuiltWith Session (for reverse lookup)
 
-#### Extract cookies from browser
-
-1. Open **https://builtwith.com** and log in (you need a Pro/Team account)
-2. Press **F12** → DevTools
-
-**`ASP.NET_SessionId`** is HttpOnly — you MUST copy it manually:
-
-> **F12 → Application → Cookies → builtwith.com → ASP.NET_SessionId** (double-click value → copy)
-
-**`g_state`** and **`BWSSON`** can be extracted via Console. Paste this in **F12 → Console**:
+1. Open **https://builtwith.com** and log in (Pro/Team account)
+2. Press **F12** -> **Application** -> **Cookies**
 
 ```javascript
-// ── BuiltWith Cookie Extraction ──
 (function() {
   var found = {};
   document.cookie.split(';').forEach(function(c) {
@@ -130,70 +144,44 @@ Session is saved to `~/.crawlgtm/session.json` and reused automatically.
     if (k === 'g_state' || k === 'BWSSON') found[k] = v;
   });
   found['ASP.NET_SessionId'] = 'PASTE_FROM_DEVTOOLS';
-  var json = JSON.stringify(found, null, 2);
-  console.log('%c BuiltWith Cookies:', 'color:cyan;font-size:14px');
-  console.log(json);
-  console.log('%c Replace ASP.NET_SessionId with value from Application → Cookies', 'color:yellow;font-size:14px');
-  prompt('Copy this JSON (Ctrl+A, Ctrl+C):', json);
+  prompt('Copy JSON:', JSON.stringify(found, null, 2));
 })();
 ```
 
-#### Save session
-
 ```bash
 python3 crawl_gtm.py --bw-login
-# Paste the JSON when prompted
-# Then paste ASP.NET_SessionId separately when asked
+# Paste JSON, then ASP.NET_SessionId separately
 ```
-
-Session is saved to `~/.crawlgtm/builtwith_session.json`.
 
 ---
 
 ### Session Management
 
 ```bash
-# Check all sessions
-python3 crawl_gtm.py --session-status
-
-# Re-login X.com (when session expires)
-python3 crawl_gtm.py --login
-
-# Re-login BuiltWith
-python3 crawl_gtm.py --bw-login
-
-# Clear X.com session
-python3 crawl_gtm.py --logout
+python3 crawl_gtm.py --session-status   # Check all sessions
+python3 crawl_gtm.py --login            # Re-login X.com
+python3 crawl_gtm.py --bw-login         # Re-login BuiltWith
+python3 crawl_gtm.py --logout           # Clear X.com session
 ```
 
-> **Auto-prompt:** If you run the tool without sessions configured, it will automatically prompt you to enter cookies. If a session expires mid-scan, it will detect the failure and ask for new cookies.
+> **Auto-prompt:** If a session expires mid-scan, the tool detects the failure and asks for new cookies.
 
 ---
 
 ## Usage
 
-### Basic — Collect from X.com user
+### Collect from X.com
 
 ```bash
-# Collect GTM IDs from a security researcher's timeline
+# User timeline
 python3 crawl_gtm.py --xuser sdcyberresearch
 
-# Search X.com for specific terms
+# Search X.com
 python3 crawl_gtm.py --search "magecart GTM skimmer"
+
+# Combined: search within a user's posts
+python3 crawl_gtm.py --xuser sdcyberresearch --search "magecart"
 ```
-
-### Full Flow — X.com + Deep Analysis + Reverse Lookup
-
-```bash
-python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup
-```
-
-This will:
-1. Collect posts from `@sdcyberresearch` containing GTM IDs
-2. Analyze each GTM container (domains, scripts, pixels, services)
-3. Follow linked containers found inside (deep mode)
-4. Reverse lookup each container on BuiltWith to find victim domains
-5. Output everything with victim domains highlighted in **RED**
 
 ### Analyze specific GTM IDs
 
@@ -204,19 +192,32 @@ python3 crawl_gtm.py --gtm GTM-XXXXXXX --deep --reverse-lookup
 # Multiple IDs
 python3 crawl_gtm.py --gtm GTM-XXXXXXX GTM-YYYYYYY GTM-ZZZZZZZ --deep
 
-# From file
+# From file (one per line or mixed text)
 python3 crawl_gtm.py --file gtm_ids.txt --deep --reverse-lookup
+
+# From JSON posts file
+python3 crawl_gtm.py --posts-file collected_posts.json --deep
 ```
 
-### Scan a website
+### Scan websites
 
 ```bash
-# Find and analyze GTM containers on a website
 python3 crawl_gtm.py --scan-url https://example.com --deep
-
-# Multiple URLs
 python3 crawl_gtm.py --scan-url https://site1.com https://site2.com
 ```
+
+### Full flow
+
+```bash
+python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup
+```
+
+This will:
+1. Collect posts from `@sdcyberresearch` containing GTM IDs
+2. Analyze each GTM container (domains, scripts, pixels, services)
+3. Follow linked containers found inside (deep mode chain analysis)
+4. Reverse lookup each container across 6 OSINT sources
+5. Output everything with victim domains highlighted in **RED**
 
 ---
 
@@ -225,123 +226,104 @@ python3 crawl_gtm.py --scan-url https://site1.com https://site2.com
 Run the tool periodically in background. It daemonizes after the first scan and only processes **new** posts and GTM IDs (deduplication via `~/.crawlgtm/history.json`).
 
 ```bash
-# Every 1 hour (max 12)
+# Every 1 hour
 python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --hours 1
 
-# Every 6 hours
-python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --hours 6
+# Every 6 hours with Telegram
+python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --hours 6 --telegram
 
-# Every 1 day (max 5)
+# Every 1 day
 python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --days 1
-
-# Every 3 days with Telegram notifications
-python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --days 3 --telegram
 ```
 
-### Scheduler Management
+### Management
 
 ```bash
-# Check if scheduler is running
-python3 crawl_gtm.py --scheduler-status
-
-# Stop background scheduler
-python3 crawl_gtm.py --stop
-
-# Clear history (force re-scan of everything)
-python3 crawl_gtm.py --clear-history
+python3 crawl_gtm.py --scheduler-status  # Check if running
+python3 crawl_gtm.py --stop              # Stop scheduler
+python3 crawl_gtm.py --clear-history     # Reset (re-scan everything)
 ```
 
-### Limits
-
-| Flag | Min | Max |
-|------|-----|-----|
-| `--hours N` | 1 | 12 |
-| `--days N` | 1 | 5 |
-
-You cannot use `--hours` and `--days` at the same time.
+| Flag | Range |
+|------|-------|
+| `--hours N` | 1-12 |
+| `--days N` | 1-5 |
 
 ### How deduplication works
 
 ```
-Run 1: 8 posts found → 7 GTM IDs → 76 victim domains → saved to history
-Run 2: 8 posts found → 0 new     → "No new GTM IDs to process" → skip
-Run 3: 9 posts found → 1 new     → 1 new GTM ID → analyze only this one
+Run 1: 8 posts found -> 7 GTM IDs -> 76 victim domains -> saved to history
+Run 2: 8 posts found -> 0 new     -> "No new GTM IDs to process" -> skip
+Run 3: 9 posts found -> 1 new     -> analyze only the new one
 ```
 
-The scheduler logs all activity to `~/.crawlgtm/scheduler.log`.
+Logs: `~/.crawlgtm/scheduler.log`
 
 ---
 
 ## Telegram Notifications
 
 ```bash
-# Configure bot (one-time setup)
-python3 crawl_gtm.py --telegram-setup
-
-# Run with Telegram notifications
-python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --telegram
-
-# Background scheduler with Telegram
-python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup --hours 1 --telegram
+python3 crawl_gtm.py --telegram-setup                                    # Configure bot
+python3 crawl_gtm.py --xuser sdcyberresearch --deep --telegram           # Run with alerts
+python3 crawl_gtm.py --xuser sdcyberresearch --deep --hours 1 --telegram # Scheduler + alerts
 ```
 
-Setup:
-1. Open Telegram → search **@BotFather** → `/newbot`
-2. Copy the **Bot Token**
-3. Send a message to your bot, then get your **Chat ID** from:
-   `https://api.telegram.org/bot<TOKEN>/getUpdates`
-4. Run `--telegram-setup` and enter token + chat ID
+Setup: **@BotFather** -> `/newbot` -> copy token -> send message to bot -> get chat_id from `getUpdates`
 
 ---
 
 ## Output
 
-Results are saved to the output directory (default: `output/`):
+Results are saved to `output/` (configurable with `--output`):
 
 | File | Content |
 |------|---------|
-| `crawlgtm_TIMESTAMP.json` | Full analysis results in JSON |
-| `gtm_ids_TIMESTAMP.txt` | GTM IDs found (one per line) |
-| `domains_TIMESTAMP.txt` | Victim domains found (one per line) |
+| `crawlgtm_TIMESTAMP.json` | Full analysis results (containers + posts + domain mapping) |
+| `gtm_ids_TIMESTAMP.txt` | GTM IDs found (one per line, pipe-friendly) |
+| `domains_TIMESTAMP.txt` | All domains extracted (one per line) |
 
-### What is extracted from each GTM container
+### Container extraction details
 
 | Data | Description |
 |------|-------------|
-| **Status** | Active or not (404) |
-| **Domains** | All domains referenced in the container JS |
+| **Status** | active / not_found / error |
+| **Domains** | All domains referenced in the container JS (TLD-validated) |
+| **URLs** | Full URLs found in the container |
 | **Scripts** | External .js files loaded by the container |
 | **Pixels** | Tracking pixel URLs (Facebook, Google, etc.) |
 | **Tracking IDs** | GA4 (G-xxx), UA (UA-xxx), AW (AW-xxx), linked GTMs |
-| **Services** | 30+ service signatures (Google Analytics, Facebook Pixel, Hotjar, Stripe, etc.) |
-| **Custom HTML** | Custom HTML tags (potential injection points) |
+| **Services** | 30+ service signatures (Google Analytics, Facebook Pixel, Hotjar, Stripe, Clarity, HubSpot, etc.) |
+| **Custom HTML** | Custom HTML tags (potential injection points for Magecart) |
 | **DataLayer Vars** | dataLayer variables referenced |
-| **Interesting Strings** | API keys, webhooks, emails, base64 encoded data |
-| **Container Version** | Version number for tracking changes |
-| **Reverse Lookup** | Victim domains using this container (via BuiltWith) |
+| **Interesting** | API keys, webhooks, emails, base64 blobs |
+| **Container Version** | Version number for change tracking |
+| **Reverse Lookup** | Victim domains from BuiltWith + 5 other OSINT sources |
 
 ### JSON structure
 
 ```json
 {
-  "scan_date": "2026-02-15T00:18:05+00:00",
+  "scan_date": "2026-02-15T11:45:24+00:00",
+  "gtm_containers_analyzed": 2,
+  "active_containers": 2,
+  "x_posts_collected": 0,
   "containers": [
     {
-      "gtm_id": "GTM-PLM3ZJ28",
+      "gtm_id": "GTM-KX36TXD",
       "status": "active",
-      "raw_size": 294300,
+      "raw_size": 317891,
       "domains": ["ve-interactive.cn", "veinteractive.com", "..."],
-      "tracking_ids": {"GTM": ["GTM-NF7Z75PB"], "GA4": ["G-ASSISTANT"]},
+      "tracking_ids": {"GTM": ["GTM-WL9BCSS"], "GA4": ["G-ASSISTANT"]},
       "services_detected": ["google-analytics", "google-ads"],
       "scripts_loaded": ["https://cct.google/taggy/agent.js"],
-      "interesting_strings": ["eyIwIjoiQlIi..."],
       "reverse_lookup_sites": [
-        {"domain": "starlearners-eshop.com", "source": "builtwith"},
-        {"domain": "mycruise.co.uk", "source": "builtwith"}
+        {"domain": "victim-shop.com", "source": "builtwith"},
+        {"domain": "another-site.co.uk", "source": "publicwww"}
       ]
     }
   ],
-  "posts": [...]
+  "domain_mapping": {"ve-interactive.cn": ["GTM-KX36TXD", "GTM-WL9BCSS"]}
 }
 ```
 
@@ -351,17 +333,17 @@ Results are saved to the output directory (default: `output/`):
 
 ```
 ~/.crawlgtm/
-├── session.json              # X.com cookies (auth_token + ct0)
-├── builtwith_session.json    # BuiltWith cookies (BWSSON + ASP.NET_SessionId)
-├── telegram.json             # Telegram bot config
-├── history.json              # Scheduler deduplication state
-├── scheduler.pid             # Background scheduler PID
-└── scheduler.log             # Scheduler activity log
+  session.json              # X.com cookies (auth_token + ct0)
+  builtwith_session.json    # BuiltWith cookies
+  telegram.json             # Telegram bot config
+  history.json              # Scheduler deduplication state
+  scheduler.pid             # Background scheduler PID
+  scheduler.log             # Scheduler activity log
 ```
 
 ---
 
-## Full Reference
+## Full CLI Reference
 
 ```
 Session Management:
@@ -375,12 +357,12 @@ Input Sources:
   --xuser, -x USER      X.com username to collect GTM posts from
   --search, -s TERM     Search X.com for matching posts
   --gtm, -g ID [ID..]   GTM container IDs to analyze directly
-  --file, -f FILE       File containing GTM IDs
-  --posts-file FILE     JSON file with posts to parse
-  --scan-url, -u URL    URLs to scan for GTM IDs
+  --file, -f FILE       File containing GTM IDs (one per line or mixed text)
+  --posts-file FILE     JSON file with posts to parse for GTM IDs
+  --scan-url, -u URL    URLs to scan for GTM container IDs
 
 Analysis Options:
-  --reverse-lookup, -r  Find websites using each GTM via BuiltWith
+  --reverse-lookup, -r  Find websites using each GTM (6 OSINT sources)
   --deep                Follow linked GTM containers (chain analysis)
   --bw-cookies JSON     BuiltWith cookies as JSON string
 
@@ -390,11 +372,11 @@ Output Options:
   --telegram, -t        Send results to Telegram
 
 Scheduler (Background):
-  --hours N             Repeat every N hours (1-12), runs in background
-  --days N              Repeat every N days (1-5), runs in background
+  --hours N             Repeat every N hours (1-12)
+  --days N              Repeat every N days (1-5)
   --stop                Stop background scheduler
   --scheduler-status    Show scheduler status
-  --clear-history       Clear processing history (re-scan everything)
+  --clear-history       Clear history (re-scan everything)
 ```
 
 ---
@@ -402,38 +384,66 @@ Scheduler (Background):
 ## Example Output
 
 ```
-📡 Collecting posts: @sdcyberresearch
-  ✓ Timeline: 8 posts matching 'GTM'
-✓ Found 7 GTM IDs from X.com posts
+   ▄████▄   ██▀███   ▄▄▄       █     █░ ██▓      ▄████ ▄▄▄█████▓ ███▄ ▄███▓
+  ▒██▀ ▀█  ▓██ ▒ ██▒▒████▄    ▓█░ █ ░█░▓██▒     ██▒ ▀█▒▓  ██▒ ▓▒▓██▒▀█▀ ██▒
+  ▒▓█    ▄ ▓██ ░▄█ ▒▒██  ▀█▄  ▒█░ █ ░█ ▒██░    ▒██░▄▄▄░▒ ▓██░ ▒░▓██    ▓██░
+  ▒▓▓▄ ▄██▒▒██▀▀█▄  ░██▄▄▄▄██ ░█░ █ ░█ ▒██░    ░▓█  ██▓░ ▓██▓ ░ ▒██    ▒██
+  ▒ ▓███▀ ░░██▓ ▒██▒ ▓█   ▓██▒░░██▒██▓ ░██████▒░▒▓███▀▒  ▒██▒ ░ ▒██▒   ░██▒
 
-📋 GTM IDs to analyze (7):
-  GTM-57TWMFMJ, GTM-5QGGLMHR, GTM-K955GFDM, GTM-NKH8K2JD,
-  GTM-PLM3ZJ28, GTM-PLWPKNGV, GTM-WWWNW2KJ
+  GTM OSINT & Reconnaissance Tool
 
-🔗 Deep mode: Found 1 linked GTM container (GTM-NF7Z75PB)
+📋 GTM IDs to analyze (1):
+  GTM-KX36TXD
 
-🔄 Performing reverse lookups...
-  GTM-PLM3ZJ28: found 28 sites
-  GTM-PLWPKNGV: found 27 sites
-  GTM-5QGGLMHR: found 10 sites
-  GTM-NKH8K2JD: found 5 sites (malinandgoetz.com, .ca, .co.uk, .co, .com.hk)
-  GTM-WWWNW2KJ: found 5 sites
-  GTM-K955GFDM: found 1 site
+Analyzing 1 GTM containers... ━━━━━━━━━━━━━━━━━━━━ 100%
+
+🔗 Deep mode: Found 1 linked GTM container
+
+┏━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━┓
+┃ GTM ID         ┃ Status   ┃     Size ┃  Domains ┃  Services ┃
+┡━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━┩
+│ GTM-KX36TXD    │ active   │ 310.4 KB │       12 │         2 │
+│ GTM-WL9BCSS    │ active   │ 294.1 KB │       12 │         2 │
+└────────────────┴──────────┴──────────┴──────────┴───────────┘
+
+📦 GTM-KX36TXD (v18, 310.4 KB)
+├── 🏷  Services: google-ads, google-analytics
+├── 🔢 Tracking IDs: GTM-WL9BCSS, G-ASSISTANT
+├── 🌐 Domains (12): ve-interactive.cn, veinteractive.com, ...
+├── 📜 Scripts: cct.google/taggy/agent.js
+└── 💡 Interesting: eyIwIjoiQlIi... (potential base64)
 
 ╭──────────────────── ✅ Scan Complete ────────────────────╮
-│ Containers: 8 analyzed, 8 active                         │
+│ Containers: 2 analyzed, 2 active                         │
 │ Domains: 12 unique domains found                         │
 │ Services: 2 third-party services detected                │
-│ Posts: 8 X.com posts collected                            │
-│ Victim Domains: 76 found via BuiltWith                   │
 ╰──────────────────────────────────────────────────────────╯
 ```
 
 ---
 
+## v2.0 Changelog
+
+- **17 bugs fixed** after comprehensive code audit
+- Fixed scheduler mode ignoring `--posts-file` input
+- Fixed daemon not redirecting stdout/stderr (crash prevention)
+- Fixed Google cache search crashing with `None` username
+- Fixed GTM ID validation allowing over-long IDs (`match` -> `fullmatch`)
+- Fixed Telegram notifications silently skipped for `--gtm`/`--file` inputs
+- Fixed Wayback CDX requests using wrong User-Agent
+- Added proper error handling for missing/invalid input files
+- Added UTF-8 encoding to all file operations
+- Added PID file corruption handling for scheduler
+- Fixed Nitter URL construction for absolute hrefs
+- Fixed PublicWWW fallback regex producing false positive domains
+- Fixed Telegram `send_long()` failing silently on oversized lines
+- Removed dead code (unused variables)
+
+---
+
 ## Author
 
-**@ofjaaah** — [X.com](https://x.com/oaborges_)
+**@ofjaaah** -- [X.com](https://x.com/oaborges_)
 
 ## License
 
