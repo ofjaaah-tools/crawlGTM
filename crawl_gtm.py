@@ -2027,8 +2027,16 @@ class GTMReverseLookup:
                 params["email"] = fofa_email
 
             try:
+                retries = 0
                 while True:
-                    resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
+                    try:
+                        resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
+                    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, OSError):
+                        if retries < 2:
+                            retries += 1
+                            time.sleep(5 * retries)
+                            continue
+                        raise
                     if resp.status_code != 200:
                         api_failed = True
                         break
@@ -2336,10 +2344,49 @@ class FofaCollector:
                 time.sleep(0.5)
 
             except requests.exceptions.Timeout:
-                console.print(f"[yellow]  ⚠ FOFA timeout[/]")
+                console.print(f"[yellow]  ⚠ FOFA timeout on page {page}, retrying...[/]")
+                time.sleep(2)
+                try:
+                    resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=60)
+                    data = resp.json()
+                    if data.get("error") or data.get("errmsg"):
+                        console.print(f"[red]  ✗ FOFA retry failed: {data.get('errmsg', 'unknown error')}[/]")
+                        break
+                    results = data.get("results", [])
+                    if results:
+                        all_results.extend(results)
+                        next_token = data.get("next")
+                        if not next_token:
+                            break
+                        params["next"] = next_token
+                        time.sleep(0.5)
+                        continue
+                except Exception:
+                    pass
                 break
             except json.JSONDecodeError:
                 console.print("[yellow]  ⚠ FOFA returned invalid JSON[/]")
+                break
+            except (requests.exceptions.ConnectionError, OSError) as e:
+                console.print(f"[yellow]  ⚠ FOFA connection error, retrying in 5s...[/]")
+                time.sleep(5)
+                try:
+                    resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=60)
+                    data = resp.json()
+                    if data.get("error") or data.get("errmsg"):
+                        console.print(f"[red]  ✗ FOFA retry failed: {data.get('errmsg', 'unknown error')}[/]")
+                        break
+                    results = data.get("results", [])
+                    if results:
+                        all_results.extend(results)
+                        next_token = data.get("next")
+                        if not next_token:
+                            break
+                        params["next"] = next_token
+                        time.sleep(0.5)
+                        continue
+                except Exception as e2:
+                    console.print(f"[red]  ✗ FOFA retry failed: {e2}[/]")
                 break
             except Exception as e:
                 console.print(f"[yellow]  ⚠ FOFA error: {e}[/]")
@@ -2530,8 +2577,16 @@ class FofaCollector:
                 params["email"] = self.email
 
             try:
+                retries = 0
                 while True:
-                    resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
+                    try:
+                        resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
+                    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, OSError):
+                        if retries < 2:
+                            retries += 1
+                            time.sleep(5 * retries)
+                            continue
+                        raise
 
                     if resp.status_code != 200:
                         api_failed = True
