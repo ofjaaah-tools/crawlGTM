@@ -1,21 +1,14 @@
 <p align="center">
+  <img src="assets/banner.svg" alt="crawlGTM Banner" width="100%">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python 3.8+">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/scheduler-background-purple.svg" alt="Background Scheduler">
+  <img src="https://img.shields.io/badge/reverse--lookup-BuiltWith-ff0080.svg" alt="BuiltWith">
 </p>
-
-```
-   ▄████▄   ██▀███   ▄▄▄       █     █░ ██▓      ▄████ ▄▄▄█████▓ ███▄ ▄███▓
-  ▒██▀ ▀█  ▓██ ▒ ██▒▒████▄    ▓█░ █ ░█░▓██▒     ██▒ ▀█▒▓  ██▒ ▓▒▓██▒▀█▀ ██▒
-  ▒▓█    ▄ ▓██ ░▄█ ▒▒██  ▀█▄  ▒█░ █ ░█ ▒██░    ▒██░▄▄▄░▒ ▓██░ ▒░▓██    ▓██░
-  ▒▓▓▄ ▄██▒▒██▀▀█▄  ░██▄▄▄▄██ ░█░ █ ░█ ▒██░    ░▓█  ██▓░ ▓██▓ ░ ▒██    ▒██
-  ▒ ▓███▀ ░░██▓ ▒██▒ ▓█   ▓██▒░░██▒██▓ ░██████▒░▒▓███▀▒  ▒██▒ ░ ▒██▒   ░██▒
-  ░ ░▒ ▒  ░░ ▒▓ ░▒▓░ ▒▒   ▓▒█░░ ▓░▒ ▒  ░ ▒░▓  ░ ░▒   ▒  ▒ ░░   ░ ▒░   ░  ░
-    ░  ▒    ░▒ ░ ▒░  ▒   ▒▒ ░  ▒ ░ ░  ░ ░ ▒  ░  ░   ░    ░    ░  ░      ░
-  ░          ░   ░   ░   ▒     ░   ░    ░ ░   ░ ░   ░  ░         ░      ░
-  ░ ░          ░         ░  ░    ░        ░  ░      ░                    ░
-  ░
-```
 
 # crawlGTM
 

@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="450" viewBox="0 0 900 450">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#0d1b2a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1b0a2e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff" />
+      <stop offset="50%" style="stop-color:#7b2ff7" />
+      <stop offset="100%" style="stop-color:#ff0080" />
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:0" />
+      <stop offset="20%" style="stop-color:#00d4ff;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#ff0080;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ff0080;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="boxGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#00d4ff;stop-opacity:0.05" />
+    </linearGradient>
+    <linearGradient id="boxGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7b2ff7;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#7b2ff7;stop-opacity:0.05" />
+    </linearGradient>
+    <linearGradient id="boxGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff0080;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#ff0080;stop-opacity:0.05" />
+    </linearGradient>
+    <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff" />
+      <stop offset="100%" style="stop-color:#7b2ff7" />
+    </linearGradient>
+    <linearGradient id="arrowGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#7b2ff7" />
+      <stop offset="100%" style="stop-color:#ff0080" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glowStrong">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="450" fill="url(#bg)" rx="12"/>
+
+  <!-- Grid pattern -->
+  <g opacity="0.03">
+    <line x1="0" y1="0" x2="0" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="60" y1="0" x2="60" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="120" y1="0" x2="120" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="180" y1="0" x2="180" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="240" y1="0" x2="240" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="300" y1="0" x2="300" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="360" y1="0" x2="360" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="420" y1="0" x2="420" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="480" y1="0" x2="480" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="540" y1="0" x2="540" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="600" y1="0" x2="600" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="660" y1="0" x2="660" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="720" y1="0" x2="720" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="780" y1="0" x2="780" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="840" y1="0" x2="840" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="900" y1="0" x2="900" y2="450" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="60" x2="900" y2="60" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="120" x2="900" y2="120" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="180" x2="900" y2="180" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="240" x2="900" y2="240" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="300" x2="900" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="360" x2="900" y2="360" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="420" x2="900" y2="420" stroke="#fff" stroke-width="1"/>
+  </g>
+
+  <!-- Decorative corner brackets -->
+  <g stroke="#00d4ff" stroke-width="2" fill="none" opacity="0.3">
+    <polyline points="20,40 20,20 40,20"/>
+    <polyline points="860,20 880,20 880,40"/>
+    <polyline points="880,410 880,430 860,430"/>
+    <polyline points="40,430 20,430 20,410"/>
+  </g>
+
+  <!-- Scan lines decoration -->
+  <g opacity="0.02">
+    <rect x="0" y="0" width="900" height="2" fill="#fff"/>
+    <rect x="0" y="4" width="900" height="1" fill="#fff"/>
+    <rect x="0" y="8" width="900" height="2" fill="#fff"/>
+    <rect x="0" y="12" width="900" height="1" fill="#fff"/>
+  </g>
+
+  <!-- GTM Tag icon -->
+  <g transform="translate(450, 58)" filter="url(#glowStrong)">
+    <!-- Tag shape -->
+    <polygon points="-22,-18 22,-18 22,10 0,22 -22,10" fill="none" stroke="url(#titleGrad)" stroke-width="2"/>
+    <text x="0" y="2" font-family="monospace" font-size="14" fill="#00d4ff" text-anchor="middle" font-weight="bold">&lt;/&gt;</text>
+  </g>
+
+  <!-- Title -->
+  <text x="450" y="115" font-family="'Courier New', monospace" font-size="52" font-weight="bold" fill="url(#titleGrad)" text-anchor="middle" filter="url(#glow)" letter-spacing="4">crawlGTM</text>
+
+  <!-- Subtitle -->
+  <text x="450" y="148" font-family="'Courier New', monospace" font-size="14" fill="#8892b0" text-anchor="middle" letter-spacing="3">GOOGLE TAG MANAGER OSINT &amp; RECONNAISSANCE</text>
+
+  <!-- Divider line -->
+  <rect x="150" y="165" width="600" height="1" fill="url(#lineGrad)"/>
+
+  <!-- Flow diagram -->
+  <!-- Box 1: X.com -->
+  <g transform="translate(70, 200)" filter="url(#shadow)">
+    <rect x="0" y="0" width="140" height="70" rx="6" fill="url(#boxGrad1)" stroke="#00d4ff" stroke-width="1.5" opacity="0.9"/>
+    <text x="70" y="28" font-family="'Courier New', monospace" font-size="13" fill="#00d4ff" text-anchor="middle" font-weight="bold">X.com</text>
+    <text x="70" y="48" font-family="'Courier New', monospace" font-size="10" fill="#5a7a9a" text-anchor="middle">Collect Posts</text>
+    <text x="70" y="62" font-family="'Courier New', monospace" font-size="9" fill="#3a5a7a" text-anchor="middle">GraphQL API</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <g filter="url(#glow)">
+    <line x1="215" y1="235" x2="255" y2="235" stroke="url(#arrowGrad)" stroke-width="2"/>
+    <polygon points="255,230 265,235 255,240" fill="#00d4ff"/>
+  </g>
+
+  <!-- Box 2: Extract -->
+  <g transform="translate(268, 200)" filter="url(#shadow)">
+    <rect x="0" y="0" width="140" height="70" rx="6" fill="url(#boxGrad1)" stroke="#00d4ff" stroke-width="1.5" opacity="0.9"/>
+    <text x="70" y="28" font-family="'Courier New', monospace" font-size="13" fill="#00d4ff" text-anchor="middle" font-weight="bold">Extract</text>
+    <text x="70" y="48" font-family="'Courier New', monospace" font-size="10" fill="#5a7a9a" text-anchor="middle">GTM-XXXXXXX</text>
+    <text x="70" y="62" font-family="'Courier New', monospace" font-size="9" fill="#3a5a7a" text-anchor="middle">Regex + Deep</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <g filter="url(#glow)">
+    <line x1="413" y1="235" x2="453" y2="235" stroke="url(#arrowGrad)" stroke-width="2"/>
+    <polygon points="453,230 463,235 453,240" fill="#7b2ff7"/>
+  </g>
+
+  <!-- Box 3: Analyze -->
+  <g transform="translate(466, 200)" filter="url(#shadow)">
+    <rect x="0" y="0" width="140" height="70" rx="6" fill="url(#boxGrad2)" stroke="#7b2ff7" stroke-width="1.5" opacity="0.9"/>
+    <text x="70" y="28" font-family="'Courier New', monospace" font-size="13" fill="#7b2ff7" text-anchor="middle" font-weight="bold">Analyze</text>
+    <text x="70" y="48" font-family="'Courier New', monospace" font-size="10" fill="#6a5a9a" text-anchor="middle">Container JS</text>
+    <text x="70" y="62" font-family="'Courier New', monospace" font-size="9" fill="#4a3a7a" text-anchor="middle">Domains+Scripts</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <g filter="url(#glow)">
+    <line x1="611" y1="235" x2="651" y2="235" stroke="url(#arrowGrad2)" stroke-width="2"/>
+    <polygon points="651,230 661,235 651,240" fill="#ff0080"/>
+  </g>
+
+  <!-- Box 4: BuiltWith -->
+  <g transform="translate(664, 200)" filter="url(#shadow)">
+    <rect x="0" y="0" width="165" height="70" rx="6" fill="url(#boxGrad3)" stroke="#ff0080" stroke-width="1.5" opacity="0.9"/>
+    <text x="82" y="28" font-family="'Courier New', monospace" font-size="13" fill="#ff0080" text-anchor="middle" font-weight="bold">BuiltWith</text>
+    <text x="82" y="48" font-family="'Courier New', monospace" font-size="10" fill="#9a5a7a" text-anchor="middle">Reverse Lookup</text>
+    <text x="82" y="62" font-family="'Courier New', monospace" font-size="9" fill="#7a3a5a" text-anchor="middle">Victim Domains</text>
+  </g>
+
+  <!-- Down arrow from BuiltWith to Results -->
+  <g filter="url(#glow)">
+    <line x1="746" y1="275" x2="746" y2="310" stroke="#ff0080" stroke-width="2"/>
+    <polygon points="741,310 746,320 751,310" fill="#ff0080"/>
+  </g>
+
+  <!-- Results box -->
+  <g transform="translate(614, 322)" filter="url(#shadow)">
+    <rect x="0" y="0" width="265" height="55" rx="6" fill="rgba(255,0,128,0.08)" stroke="#ff0080" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="132" y="22" font-family="'Courier New', monospace" font-size="11" fill="#ff0080" text-anchor="middle" font-weight="bold">76 victim domains found</text>
+    <text x="132" y="42" font-family="'Courier New', monospace" font-size="10" fill="#9a5a7a" text-anchor="middle">JSON + TXT + Telegram</text>
+  </g>
+
+  <!-- Stats row -->
+  <g transform="translate(0, 390)">
+    <!-- Stat 1 -->
+    <g transform="translate(100, 0)">
+      <text x="0" y="0" font-family="'Courier New', monospace" font-size="22" fill="#00d4ff" font-weight="bold" filter="url(#glow)">8</text>
+      <text x="30" y="0" font-family="'Courier New', monospace" font-size="11" fill="#5a7a9a">posts</text>
+    </g>
+
+    <!-- Stat separator -->
+    <text x="185" y="0" font-family="'Courier New', monospace" font-size="14" fill="#2a3a4a">|</text>
+
+    <!-- Stat 2 -->
+    <g transform="translate(210, 0)">
+      <text x="0" y="0" font-family="'Courier New', monospace" font-size="22" fill="#00d4ff" font-weight="bold" filter="url(#glow)">7</text>
+      <text x="22" y="0" font-family="'Courier New', monospace" font-size="11" fill="#5a7a9a">GTM IDs</text>
+    </g>
+
+    <text x="310" y="0" font-family="'Courier New', monospace" font-size="14" fill="#2a3a4a">|</text>
+
+    <!-- Stat 3 -->
+    <g transform="translate(335, 0)">
+      <text x="0" y="0" font-family="'Courier New', monospace" font-size="22" fill="#7b2ff7" font-weight="bold" filter="url(#glow)">8</text>
+      <text x="22" y="0" font-family="'Courier New', monospace" font-size="11" fill="#6a5a9a">containers</text>
+    </g>
+
+    <text x="450" y="0" font-family="'Courier New', monospace" font-size="14" fill="#2a3a4a">|</text>
+
+    <!-- Stat 4 -->
+    <g transform="translate(475, 0)">
+      <text x="0" y="0" font-family="'Courier New', monospace" font-size="22" fill="#7b2ff7" font-weight="bold" filter="url(#glow)">30+</text>
+      <text x="48" y="0" font-family="'Courier New', monospace" font-size="11" fill="#6a5a9a">services</text>
+    </g>
+
+    <text x="580" y="0" font-family="'Courier New', monospace" font-size="14" fill="#2a3a4a">|</text>
+
+    <!-- Stat 5 -->
+    <g transform="translate(605, 0)">
+      <text x="0" y="0" font-family="'Courier New', monospace" font-size="22" fill="#ff0080" font-weight="bold" filter="url(#glow)">76</text>
+      <text x="35" y="0" font-family="'Courier New', monospace" font-size="11" fill="#9a5a7a">victim domains</text>
+    </g>
+  </g>
+
+  <!-- Bottom tagline -->
+  <text x="450" y="435" font-family="'Courier New', monospace" font-size="10" fill="#3a4a5a" text-anchor="middle" letter-spacing="2">X.COM  &#x2192;  GTM EXTRACTION  &#x2192;  CONTAINER ANALYSIS  &#x2192;  BUILTWITH REVERSE LOOKUP  &#x2192;  DOMAINS</text>
+
+  <!-- Author -->
+  <text x="450" y="18" font-family="'Courier New', monospace" font-size="9" fill="#3a4a5a" text-anchor="middle" letter-spacing="1">by @ofjaaah</text>
+
+  <!-- Scheduler badge -->
+  <g transform="translate(30, 325)">
+    <rect x="0" y="0" width="200" height="52" rx="6" fill="rgba(0,212,255,0.05)" stroke="#00d4ff" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="100" y="18" font-family="'Courier New', monospace" font-size="10" fill="#00d4ff" text-anchor="middle" font-weight="bold">SCHEDULER</text>
+    <text x="100" y="34" font-family="'Courier New', monospace" font-size="9" fill="#5a7a9a" text-anchor="middle">--hours 1-12</text>
+    <text x="100" y="46" font-family="'Courier New', monospace" font-size="9" fill="#5a7a9a" text-anchor="middle">--days 1-5</text>
+  </g>
+
+  <!-- Telegram badge -->
+  <g transform="translate(250, 325)">
+    <rect x="0" y="0" width="130" height="52" rx="6" fill="rgba(0,212,255,0.05)" stroke="#00d4ff" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="65" y="18" font-family="'Courier New', monospace" font-size="10" fill="#00d4ff" text-anchor="middle" font-weight="bold">TELEGRAM</text>
+    <text x="65" y="34" font-family="'Courier New', monospace" font-size="9" fill="#5a7a9a" text-anchor="middle">Bot Alerts</text>
+    <text x="65" y="46" font-family="'Courier New', monospace" font-size="9" fill="#5a7a9a" text-anchor="middle">--telegram</text>
+  </g>
+
+  <!-- Deep mode badge -->
+  <g transform="translate(400, 325)">
+    <rect x="0" y="0" width="130" height="52" rx="6" fill="rgba(123,47,247,0.05)" stroke="#7b2ff7" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="65" y="18" font-family="'Courier New', monospace" font-size="10" fill="#7b2ff7" text-anchor="middle" font-weight="bold">DEEP MODE</text>
+    <text x="65" y="34" font-family="'Courier New', monospace" font-size="9" fill="#6a5a9a" text-anchor="middle">Chain Analysis</text>
+    <text x="65" y="46" font-family="'Courier New', monospace" font-size="9" fill="#6a5a9a" text-anchor="middle">--deep</text>
+  </g>
+
+</svg>
