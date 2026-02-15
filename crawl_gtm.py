@@ -29,6 +29,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import signal
 import sys
@@ -148,6 +149,7 @@ IGNORE_DOMAINS = {
 
 # FOFA API configuration
 FOFA_API_URL = "https://fofa.info/api/v1/search/all"
+FOFA_NEXT_API_URL = "https://fofa.info/api/v1/search/next"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1996,41 +1998,76 @@ class GTMReverseLookup:
         return results
 
     def _search_fofa(self, gtm_id: str) -> list[dict]:
-        """Search FOFA for sites using this GTM ID."""
+        """Search FOFA for sites using this GTM ID via cursor pagination.
+
+        Uses /search/next (fofaquery style) to fetch ALL results.
+        Falls back to web scraper if no API key or API fails.
+        """
+        fofa_key = load_fofa_key()
+
+        # If no API key, go straight to web scraper
+        if not fofa_key:
+            return fofa_web_reverse_lookup(gtm_id)
+
         results = []
         seen = set()
+        api_failed = False
 
-        # Search by header (contains GTM IDs in HTTP responses)
-        for query in [f'header="{gtm_id}"', f'"{gtm_id}"']:
+        for query in [f'body="{gtm_id}"', f'header="{gtm_id}"', f'"{gtm_id}"']:
+            qbase64 = base64.b64encode(query.encode()).decode()
+            fofa_email = load_fofa_email()
+            params = {
+                "key": fofa_key,
+                "qbase64": qbase64,
+                "fields": "host,link",
+                "size": 100,
+                "full": "true",
+            }
+            if fofa_email:
+                params["email"] = fofa_email
+
             try:
-                qbase64 = base64.b64encode(query.encode()).decode()
-                params = {
-                    "key": load_fofa_key(),
-                    "qbase64": qbase64,
-                    "fields": "host,link",
-                    "page": 1,
-                    "size": 100,
-                }
-                resp = self.session.get(FOFA_API_URL, params=params, timeout=30)
-                if resp.status_code == 200:
+                while True:
+                    resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
+                    if resp.status_code != 200:
+                        api_failed = True
+                        break
+
                     data = resp.json()
-                    if not data.get("errmsg"):
-                        for row in data.get("results", []):
-                            host = row[0] if len(row) > 0 else ""
-                            link = row[1] if len(row) > 1 else ""
-                            if host:
-                                domain = host.split(":")[0].lower().strip()
-                                if domain.startswith("http"):
-                                    domain = re.sub(r'^https?://', '', domain).split("/")[0]
-                                if domain and "." in domain and len(domain) > 3 and domain not in seen:
-                                    seen.add(domain)
-                                    results.append({
-                                        "domain": domain,
-                                        "source": "fofa",
-                                        "url": link if link else f"https://{domain}",
-                                    })
+                    if data.get("error") or data.get("errmsg"):
+                        api_failed = True
+                        break
+
+                    for row in data.get("results", []):
+                        host = row[0] if len(row) > 0 else ""
+                        link = row[1] if len(row) > 1 else ""
+                        if host:
+                            domain = host.split(":")[0].lower().strip()
+                            if domain.startswith("http"):
+                                domain = re.sub(r'^https?://', '', domain).split("/")[0]
+                            if domain and "." in domain and len(domain) > 3 and domain not in seen:
+                                seen.add(domain)
+                                results.append({
+                                    "domain": domain,
+                                    "source": "fofa",
+                                    "url": link if link else f"https://{domain}",
+                                })
+
+                    next_token = data.get("next")
+                    if not next_token:
+                        break
+                    params["next"] = next_token
+                    time.sleep(0.5)
+
             except Exception:
-                pass
+                api_failed = True
+
+            if api_failed:
+                break
+
+        # Fallback to web scraper if API failed
+        if api_failed and not results:
+            return fofa_web_reverse_lookup(gtm_id)
 
         return results
 
@@ -2038,6 +2075,164 @@ class GTMReverseLookup:
 # ──────────────────────────────────────────────────────────────────────
 # FOFA GTM Discovery - Search FOFA for GTM containers
 # ──────────────────────────────────────────────────────────────────────
+
+FOFA_WEB_URL = "https://en.fofa.info/result"
+
+
+def fofa_web_search(query: str, max_pages: int = 1) -> list[dict]:
+    """
+    Search FOFA by scraping the web UI (no API key needed).
+
+    Returns up to 10 results per page. Without login, only page 1
+    returns unique results; subsequent pages may repeat.
+
+    Args:
+        query: Raw FOFA query string (e.g., 'body="GTM-XXXXXXX"').
+        max_pages: Pages to fetch (default 1; unauthenticated caps at ~10 results).
+
+    Returns:
+        List of dicts with keys: host, domain, url, ip, source.
+    """
+    qbase64 = base64.b64encode(query.encode()).decode()
+    results = []
+    seen = set()
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://en.fofa.info/",
+    }
+
+    for page in range(1, max_pages + 1):
+        try:
+            params = {"qbase64": qbase64, "page": page, "page_size": 10}
+            resp = requests.get(
+                FOFA_WEB_URL, params=params, headers=headers,
+                timeout=20, allow_redirects=True,
+            )
+
+            if resp.status_code != 200:
+                if "-3000" in resp.text or "abnormal" in resp.text.lower():
+                    console.print("[yellow]  \u26a0 FOFA web: IP rate-limited (-3000)[/]")
+                else:
+                    console.print(f"[yellow]  \u26a0 FOFA web: HTTP {resp.status_code}[/]")
+                break
+
+            html = resp.text
+
+            # Detect rate-limit even on 200
+            if "-3000" in html:
+                console.print("[yellow]  \u26a0 FOFA web: IP rate-limited (-3000)[/]")
+                break
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Extract total result count
+            if page == 1:
+                count_match = re.search(r'<span[^>]*>([0-9,]+)</span>\s*results', html)
+                if count_match:
+                    console.print(f"[dim]  FOFA web: {count_match.group(1)} total results[/]")
+
+            # Extract result entries via hsxa-host class
+            host_spans = soup.select("span.hsxa-host a")
+            if not host_spans:
+                # Fallback: broader link pattern
+                host_spans = [
+                    a for a in soup.select("a[href]")
+                    if a.get("href", "").startswith("http")
+                    and "fofa.info" not in a.get("href", "")
+                    and "static" not in a.get("href", "")
+                    and "javascript" not in a.get("href", "")
+                    and "v5static" not in a.get("href", "")
+                    and "twitter" not in a.get("href", "")
+                    and "github" not in a.get("href", "")
+                ]
+
+            if not host_spans and page == 1:
+                console.print("[yellow]  FOFA web: no results found[/]")
+                break
+
+            page_count = 0
+            for a_tag in host_spans:
+                href = a_tag.get("href", "").strip()
+                if not href or "fofa.info" in href:
+                    continue
+
+                url = href if href.startswith("http") else f"https://{href}"
+                try:
+                    parsed = urllib.parse.urlparse(url)
+                    domain = parsed.hostname or ""
+                except Exception:
+                    domain = ""
+
+                if not domain or domain in seen:
+                    continue
+                seen.add(domain)
+
+                ip = ""
+                ip_match = re.match(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', domain)
+                if ip_match:
+                    ip = domain
+
+                results.append({
+                    "host": a_tag.get_text(strip=True) or domain,
+                    "domain": domain,
+                    "url": url,
+                    "ip": ip,
+                    "source": "fofa-web",
+                })
+                page_count += 1
+
+            if page_count == 0:
+                break
+
+            console.print(f"[dim]  FOFA web page {page}: {page_count} results[/]")
+
+            if page < max_pages:
+                time.sleep(3)
+
+        except requests.exceptions.Timeout:
+            console.print("[yellow]  \u26a0 FOFA web: timeout[/]")
+            break
+        except Exception as e:
+            console.print(f"[yellow]  \u26a0 FOFA web: {e}[/]")
+            break
+
+    return results
+
+
+def fofa_web_reverse_lookup(gtm_id: str) -> list[dict]:
+    """
+    Search FOFA web UI for sites using a specific GTM ID (no API key).
+
+    Tries body search first, then plain text fallback.
+    Returns list of dicts with domain, source, url keys.
+    """
+    results = []
+    seen = set()
+
+    for query in [f'body="{gtm_id}"', f'"{gtm_id}"']:
+        raw = fofa_web_search(query, max_pages=1)
+        for r in raw:
+            domain = r.get("domain", "").lower().strip()
+            if domain and domain not in seen and "." in domain and len(domain) > 3:
+                seen.add(domain)
+                results.append({
+                    "domain": domain,
+                    "source": "fofa-web",
+                    "url": r.get("url", f"https://{domain}"),
+                })
+        if results:
+            break
+        time.sleep(2)
+
+    return results
+
 
 class FofaCollector:
     """Collect GTM IDs from FOFA search engine API.
@@ -2048,10 +2243,13 @@ class FofaCollector:
     3. Scan discovered hosts to extract GTM IDs from HTML
     """
 
-    def __init__(self, api_key: str = "", max_pages: int = 5, page_size: int = 100):
+    def __init__(self, api_key: str = "", email: str = "", max_pages: int = 5, page_size: int = 100):
         if not api_key:
             api_key = load_fofa_key()
+        if not email:
+            email = load_fofa_email()
         self.api_key = api_key
+        self.email = email
         self.max_pages = max_pages
         self.page_size = page_size
         self.session = requests.Session()
@@ -2077,22 +2275,29 @@ class FofaCollector:
         return gtm_ids
 
     def _fofa_search(self, fofa_query: str, fields: str = "host,title,link,header") -> list[list]:
-        """Execute a FOFA API search and return all result rows across pages."""
+        """Execute FOFA search using /search/next cursor pagination (fofaquery style).
+
+        Fetches ALL available results by following the cursor 'next' token,
+        not limited by page count.
+        """
         qbase64 = base64.b64encode(fofa_query.encode()).decode()
         all_results = []
-        total_available = 0
 
-        for page in range(1, self.max_pages + 1):
+        params = {
+            "key": self.api_key,
+            "qbase64": qbase64,
+            "fields": fields,
+            "size": self.page_size,
+            "full": "true",
+        }
+        if self.email:
+            params["email"] = self.email
+
+        page = 0
+        while True:
+            page += 1
             try:
-                params = {
-                    "key": self.api_key,
-                    "qbase64": qbase64,
-                    "fields": fields,
-                    "page": page,
-                    "size": self.page_size,
-                }
-
-                resp = self.session.get(FOFA_API_URL, params=params, timeout=30)
+                resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
 
                 if resp.status_code == 401:
                     console.print("[red]  ✗ FOFA API: authentication failed (invalid key)[/]")
@@ -2104,8 +2309,8 @@ class FofaCollector:
 
                 data = resp.json()
 
-                if data.get("errmsg"):
-                    console.print(f"[red]  ✗ FOFA: {data['errmsg']}[/]")
+                if data.get("error") or data.get("errmsg"):
+                    console.print(f"[red]  ✗ FOFA: {data.get('errmsg', 'unknown error')}[/]")
                     break
 
                 results = data.get("results", [])
@@ -2118,17 +2323,20 @@ class FofaCollector:
 
                 all_results.extend(results)
                 console.print(
-                    f"[dim]  Page {page}: {len(results)} results "
-                    f"(fetched {len(all_results)}/{total_available})[/]"
+                    f"[dim]  Fetched {len(results)} results "
+                    f"(total: {len(all_results)}/{total_available})[/]"
                 )
 
-                if len(all_results) >= total_available:
+                # Cursor-based pagination: follow 'next' token
+                next_token = data.get("next")
+                if not next_token:
                     break
+                params["next"] = next_token
 
                 time.sleep(0.5)
 
             except requests.exceptions.Timeout:
-                console.print(f"[yellow]  ⚠ FOFA timeout on page {page}[/]")
+                console.print(f"[yellow]  ⚠ FOFA timeout[/]")
                 break
             except json.JSONDecodeError:
                 console.print("[yellow]  ⚠ FOFA returned invalid JSON[/]")
@@ -2208,31 +2416,44 @@ class FofaCollector:
                 seen_hosts.add(clean_host)
                 all_hosts.append(clean_host)
 
-        # Also try header-specific search if user query is broad
-        if not all_gtm_ids and not query_lower.startswith("header="):
-            header_query = f'{query} && header="GTM-"' if "gtm" not in query_lower else f'header="GTM-" && {query}'
-            console.print(f"[dim]  Also checking headers: {header_query}[/]")
-            header_results = self._fofa_search(header_query, fields="host,title,link,header")
-            for row in header_results:
-                header = row[3] if len(row) > 3 else ""
-                if header:
-                    for gid in GTM_ID_PATTERN.findall(header):
-                        all_gtm_ids.add(gid.upper())
-                # Add hosts
-                host = row[0] if len(row) > 0 else ""
-                link = row[2] if len(row) > 2 else ""
-                clean_host = ""
-                if link and link.startswith("http"):
-                    clean_host = link.strip().rstrip("/")
-                elif host:
-                    h = host.strip()
-                    if h.startswith("http"):
-                        clean_host = h.rstrip("/")
-                    elif "." in h:
-                        clean_host = f"https://{h.split(':')[0]}"
-                if clean_host and clean_host not in seen_hosts:
-                    seen_hosts.add(clean_host)
-                    all_hosts.append(clean_host)
+        # Fallback: try body and header-specific searches if initial query found no GTM IDs
+        if not all_gtm_ids and not query_lower.startswith(("header=", "body=")):
+            fallback_queries = []
+            if "gtm" not in query_lower:
+                fallback_queries.append(f'{query} && body="GTM-"')
+                fallback_queries.append(f'{query} && header="GTM-"')
+            else:
+                fallback_queries.append(f'body="GTM-" && {query}')
+                fallback_queries.append(f'header="GTM-" && {query}')
+            for fb_query in fallback_queries:
+                console.print(f"[dim]  Fallback search: {fb_query}[/]")
+                fb_results = self._fofa_search(fb_query, fields="host,title,link,header")
+                for row in fb_results:
+                    header = row[3] if len(row) > 3 else ""
+                    if header:
+                        for gid in GTM_ID_PATTERN.findall(header):
+                            all_gtm_ids.add(gid.upper())
+                    title = row[1] if len(row) > 1 else ""
+                    if title:
+                        for gid in GTM_ID_PATTERN.findall(title):
+                            all_gtm_ids.add(gid.upper())
+                    # Add hosts
+                    host = row[0] if len(row) > 0 else ""
+                    link = row[2] if len(row) > 2 else ""
+                    clean_host = ""
+                    if link and link.startswith("http"):
+                        clean_host = link.strip().rstrip("/")
+                    elif host:
+                        h = host.strip()
+                        if h.startswith("http"):
+                            clean_host = h.rstrip("/")
+                        elif "." in h:
+                            clean_host = f"https://{h.split(':')[0]}"
+                    if clean_host and clean_host not in seen_hosts:
+                        seen_hosts.add(clean_host)
+                        all_hosts.append(clean_host)
+                if all_gtm_ids:
+                    break  # Stop fallback if we found GTM IDs
 
         console.print(
             f"[green]  ✓ FOFA: {len(all_gtm_ids)} GTM IDs from headers, "
@@ -2274,27 +2495,44 @@ class FofaCollector:
         return all_gtm_ids, all_hosts
 
     def reverse_lookup(self, gtm_id: str) -> list[dict]:
-        """Search FOFA for websites using a specific GTM ID via header search."""
+        """Search FOFA for websites using a specific GTM ID using cursor pagination.
+
+        Uses /search/next to fetch ALL results, not limited by page count.
+        Falls back to web scraper if no API key or API fails.
+        """
+        # If no API key, go straight to web scraper
+        if not self.api_key:
+            return fofa_web_reverse_lookup(gtm_id)
+
         results = []
+        seen = set()
+        api_failed = False
 
-        # Search for GTM ID in HTTP headers
-        query = f'header="{gtm_id}"'
-        qbase64 = base64.b64encode(query.encode()).decode()
-
-        try:
+        for query in [f'body="{gtm_id}"', f'header="{gtm_id}"', f'"{gtm_id}"']:
+            qbase64 = base64.b64encode(query.encode()).decode()
             params = {
                 "key": self.api_key,
                 "qbase64": qbase64,
                 "fields": "host,link",
-                "page": 1,
                 "size": 100,
+                "full": "true",
             }
+            if self.email:
+                params["email"] = self.email
 
-            resp = self.session.get(FOFA_API_URL, params=params, timeout=30)
+            try:
+                while True:
+                    resp = self.session.get(FOFA_NEXT_API_URL, params=params, timeout=30)
 
-            if resp.status_code == 200:
-                data = resp.json()
-                if not data.get("errmsg"):
+                    if resp.status_code != 200:
+                        api_failed = True
+                        break
+
+                    data = resp.json()
+                    if data.get("error") or data.get("errmsg"):
+                        api_failed = True
+                        break
+
                     for row in data.get("results", []):
                         host = row[0] if len(row) > 0 else ""
                         link = row[1] if len(row) > 1 else ""
@@ -2302,45 +2540,29 @@ class FofaCollector:
                             domain = host.split(":")[0].lower().strip()
                             if domain.startswith("http"):
                                 domain = re.sub(r'^https?://', '', domain).split("/")[0]
-                            if domain and "." in domain and len(domain) > 3:
+                            if domain and "." in domain and len(domain) > 3 and domain not in seen:
+                                seen.add(domain)
                                 results.append({
                                     "domain": domain,
                                     "source": "fofa",
                                     "url": link if link else f"https://{domain}",
                                 })
-        except Exception:
-            pass
 
-        # Also try plain text search for the GTM ID
-        query2 = f'"{gtm_id}"'
-        qbase64_2 = base64.b64encode(query2.encode()).decode()
-        try:
-            params2 = {
-                "key": self.api_key,
-                "qbase64": qbase64_2,
-                "fields": "host,link",
-                "page": 1,
-                "size": 100,
-            }
-            resp2 = self.session.get(FOFA_API_URL, params=params2, timeout=30)
-            if resp2.status_code == 200:
-                data2 = resp2.json()
-                if not data2.get("errmsg"):
-                    for row in data2.get("results", []):
-                        host = row[0] if len(row) > 0 else ""
-                        link = row[1] if len(row) > 1 else ""
-                        if host:
-                            domain = host.split(":")[0].lower().strip()
-                            if domain.startswith("http"):
-                                domain = re.sub(r'^https?://', '', domain).split("/")[0]
-                            if domain and "." in domain and len(domain) > 3:
-                                results.append({
-                                    "domain": domain,
-                                    "source": "fofa",
-                                    "url": link if link else f"https://{domain}",
-                                })
-        except Exception:
-            pass
+                    next_token = data.get("next")
+                    if not next_token:
+                        break
+                    params["next"] = next_token
+                    time.sleep(0.5)
+
+            except Exception:
+                api_failed = True
+
+            if api_failed:
+                break
+
+        # Fallback to web scraper if API failed
+        if api_failed and not results:
+            return fofa_web_reverse_lookup(gtm_id)
 
         return results
 
@@ -2479,27 +2701,46 @@ def load_fofa_key() -> str:
     return ""
 
 
-def save_fofa_key(key: str):
-    """Save FOFA API key to disk."""
+def load_fofa_email() -> str:
+    """Load FOFA email from disk."""
+    if FOFA_FILE.exists():
+        try:
+            data = json.loads(FOFA_FILE.read_text())
+            return data.get("email", "")
+        except Exception:
+            pass
+    return ""
+
+
+def save_fofa_key(key: str, email: str = ""):
+    """Save FOFA API key and email to disk."""
     SESSION_DIR.mkdir(parents=True, exist_ok=True)
-    FOFA_FILE.write_text(json.dumps({"key": key, "saved_at": datetime.now(timezone.utc).isoformat()}, indent=2))
+    fofa_data = {"key": key, "saved_at": datetime.now(timezone.utc).isoformat()}
+    if email:
+        fofa_data["email"] = email
+    FOFA_FILE.write_text(json.dumps(fofa_data, indent=2))
 
 
-def validate_fofa_key(key: str) -> bool:
+def validate_fofa_key(key: str, email: str = "") -> bool:
     """Test if FOFA API key is valid."""
     if not key or len(key) < 10:
         return False
+    if not email:
+        email = load_fofa_email()
     try:
         qbase64 = base64.b64encode(b'title="test"').decode()
+        params = {"key": key, "qbase64": qbase64, "fields": "host", "size": 1}
+        if email:
+            params["email"] = email
         resp = requests.get(
             FOFA_API_URL,
-            params={"key": key, "qbase64": qbase64, "fields": "host", "size": 1},
+            params=params,
             headers={"User-Agent": USER_AGENT},
             timeout=15,
         )
         if resp.status_code == 200:
             data = resp.json()
-            return not data.get("errmsg", "").startswith("[50")
+            return not data.get("error") and not data.get("errmsg", "").startswith("[50")
         return False
     except Exception:
         return False
@@ -2517,24 +2758,25 @@ def prompt_fofa_setup() -> str:
 │                                                                     │
 │  1. Go to https://en.fofa.info/ and create an account               │
 │  2. Navigate to your profile → API Key                              │
-│  3. Copy your API key                                               │
+│  3. Copy your email and API key                                     │
 └─────────────────────────────────────────────────────────────────────┘[/]
 """)
 
     try:
+        email = input("  FOFA email: ").strip()
         key = input("  FOFA API key: ").strip()
         if not key:
             console.print("[yellow]  Skipped FOFA setup.[/]")
             return ""
 
         console.print("[dim]  Validating FOFA key...[/]")
-        if validate_fofa_key(key):
-            save_fofa_key(key)
+        if validate_fofa_key(key, email):
+            save_fofa_key(key, email)
             console.print("[bold green]  ✓ FOFA API key saved and validated![/]")
             return key
         else:
             console.print("[yellow]  ⚠ FOFA key could not be validated (may still work). Saving anyway.[/]")
-            save_fofa_key(key)
+            save_fofa_key(key, email)
             return key
 
     except (EOFError, KeyboardInterrupt):
@@ -3410,22 +3652,56 @@ def run_scheduler(args, interval_seconds: int):
 # ──────────────────────────────────────────────────────────────────────
 
 def main():
-    banner = """
-[bold cyan]
-   ▄████▄   ██▀███   ▄▄▄       █     █░ ██▓      ▄████ ▄▄▄█████▓ ███▄ ▄███▓
-  ▒██▀ ▀█  ▓██ ▒ ██▒▒████▄    ▓█░ █ ░█░▓██▒     ██▒ ▀█▒▓  ██▒ ▓▒▓██▒▀█▀ ██▒
-  ▒▓█    ▄ ▓██ ░▄█ ▒▒██  ▀█▄  ▒█░ █ ░█ ▒██░    ▒██░▄▄▄░▒ ▓██░ ▒░▓██    ▓██░
-  ▒▓▓▄ ▄██▒▒██▀▀█▄  ░██▄▄▄▄██ ░█░ █ ░█ ▒██░    ░▓█  ██▓░ ▓██▓ ░ ▒██    ▒██
-  ▒ ▓███▀ ░░██▓ ▒██▒ ▓█   ▓██▒░░██▒██▓ ░██████▒░▒▓███▀▒  ▒██▒ ░ ▒██▒   ░██▒
-  ░ ░▒ ▒  ░░ ▒▓ ░▒▓░ ▒▒   ▓▒█░░ ▓░▒ ▒  ░ ▒░▓  ░ ░▒   ▒  ▒ ░░   ░ ▒░   ░  ░
-    ░  ▒    ░▒ ░ ▒░  ▒   ▒▒ ░  ▒ ░ ░  ░ ░ ▒  ░  ░   ░    ░    ░  ░      ░
-  ░          ░   ░   ░   ▒     ░   ░    ░ ░   ░ ░   ░  ░         ░      ░
-  ░ ░          ░         ░  ░    ░        ░  ░      ░                    ░
-  ░
-[/]
-[bold white]  GTM OSINT & Reconnaissance Tool[/]
-[dim]  Collect GTM IDs from X.com → Analyze containers → Map domains[/]
-"""
+    # ── CTI Monitoring Banner (random color on each run) ──
+    _themes = [
+        {"accent": "cyan",    "glow": "bold cyan",    "dim_accent": "dim cyan"},
+        {"accent": "red",     "glow": "bold red",     "dim_accent": "dim red"},
+        {"accent": "green",   "glow": "bold green",   "dim_accent": "dim green"},
+        {"accent": "magenta", "glow": "bold magenta", "dim_accent": "dim magenta"},
+        {"accent": "yellow",  "glow": "bold yellow",  "dim_accent": "dim yellow"},
+        {"accent": "blue",    "glow": "bold blue",    "dim_accent": "dim blue"},
+    ]
+    _t = random.choice(_themes)
+    _a, _g, _d = _t["accent"], _t["glow"], _t["dim_accent"]
+    _now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    _logo_text = (
+        "                         _ _____ _____ __  __\n"
+        "  ___ _ __ __ ___      _| |  ___|_   _|  \\/  |\n"
+        " / __| '__/ _` \\\\ \\\\ /\\\\ / / | |_ __| | | |\\/| |\n"
+        "| (__| | | (_| |\\\\ V  V /| |  _|  | | | |  | |\n"
+        " \\___|_|  \\__,_| \\_/\\_/ |_|_|    |_| |_|  |_|"
+    )
+    _logo = f"[{_g}]{_logo_text}[/]"
+
+    _status_line = (
+        f"  [{_a}]STATUS[/] [bold white]ONLINE[/]"
+        f"  [{_d}]|[/]  [{_a}]MODE[/] [bold white]CTI RECON[/]"
+        f"  [{_d}]|[/]  [{_a}]TIME[/] [bold white]{_now}[/]"
+    )
+
+    _pipeline = (
+        f"  [{_d}]01[/] [{_a}]COLLECT[/] [dim]X.com / FOFA / URLs[/]\n"
+        f"  [{_d}]02[/] [{_a}]ANALYZE[/] [dim]GTM Containers / JS Payloads[/]\n"
+        f"  [{_d}]03[/] [{_a}]TRACK[/]   [dim]Pixels / GA / Meta / TikTok[/]\n"
+        f"  [{_d}]04[/] [{_a}]MAP[/]     [dim]Domains / Reverse Lookup / WHOIS[/]\n"
+        f"  [{_d}]05[/] [{_a}]DETECT[/]  [dim]Skimmers / Malware / IOCs[/]"
+    )
+
+    _sources = (
+        f"  [{_a}]INTEL[/]  "
+        f"[dim]FOFA[/] [{_d}]/[/] [dim]BuiltWith[/] [{_d}]/[/] "
+        f"[dim]PublicWWW[/] [{_d}]/[/] [dim]SpyOnWeb[/] [{_d}]/[/] "
+        f"[dim]Wayback[/] [{_d}]/[/] [dim]X.com[/]"
+    )
+
+    banner = Panel(
+        f"{_logo}\n\n{_status_line}\n\n{_pipeline}\n\n{_sources}",
+        title=f"[{_g}]crawlGTM[/] [{_d}]v4.0[/]",
+        subtitle=f"[{_d}]Cyber Threat Intelligence[/] [{_a}]|[/] [{_d}]GTM Reconnaissance Platform[/]",
+        border_style=_a,
+        padding=(1, 2),
+    )
     console.print(banner)
 
     # ── First Run Setup Wizard ──
@@ -3812,10 +4088,9 @@ Examples:
     if args.fofa:
         fofa_key = load_fofa_key()
         if not fofa_key:
-            console.print("[yellow]⚠ FOFA API key not configured.[/]")
-            fofa_key = prompt_fofa_setup()
+            console.print("[yellow]⚠ FOFA API key not configured. Using web scraper...[/]")
         if fofa_key:
-            console.print(f"\n[bold]🔍 FOFA: Searching for GTM containers...[/]")
+            console.print(f"\n[bold]🔍 FOFA API: Searching for GTM containers...[/]")
             fofa = FofaCollector(
                 api_key=fofa_key,
                 max_pages=args.fofa_pages,
@@ -3832,6 +4107,41 @@ Examples:
                     f"{'...' if len(new_from_fofa) > 20 else ''}[/]"
                 )
             all_gtm_ids.update(fofa_gtm_ids)
+        else:
+            # No API key - use web scraper
+            console.print(f"\n[bold]🔍 FOFA Web: Searching for GTM containers...[/]")
+            query = args.fofa
+            query_lower = query.lower()
+            if "gtm" not in query_lower and "googletagmanager" not in query_lower:
+                fofa_query = f'{query} && "googletagmanager"'
+            else:
+                fofa_query = query
+            web_results = fofa_web_search(fofa_query, max_pages=1)
+            fofa_hosts = []
+            for r in web_results:
+                url = r.get("url", "")
+                if url:
+                    fofa_hosts.append(url)
+            if fofa_hosts and args.fofa_scan:
+                console.print(f"[cyan]  Scanning {len(fofa_hosts[:50])} FOFA hosts for GTM IDs...[/]")
+                for host_url in fofa_hosts[:50]:
+                    try:
+                        host_gtms = scan_url_for_gtm(host_url)
+                        if host_gtms:
+                            new_gtms = host_gtms - all_gtm_ids
+                            all_gtm_ids.update(host_gtms)
+                            if new_gtms:
+                                console.print(
+                                    f"    [green]+{len(new_gtms)} GTM IDs from {host_url}: "
+                                    f"{', '.join(sorted(new_gtms)[:5])}[/]"
+                                )
+                    except Exception:
+                        pass
+            elif fofa_hosts and not args.fofa_scan:
+                console.print(
+                    f"[yellow]  Tip: Use --fofa-scan to scan the {len(fofa_hosts)} "
+                    f"discovered hosts for GTM IDs[/]"
+                )
 
     # ── Analyze containers ──
     if not all_gtm_ids:
