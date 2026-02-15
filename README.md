@@ -4,12 +4,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/version-3.0-7b2ff7.svg" alt="v3.0">
+  <img src="https://img.shields.io/badge/version-4.0-7b2ff7.svg" alt="v4.0">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/scheduler-background-purple.svg" alt="Background Scheduler">
   <img src="https://img.shields.io/badge/reverse--lookup-BuiltWith-ff0080.svg" alt="BuiltWith">
   <img src="https://img.shields.io/badge/FOFA-integrated-orange.svg" alt="FOFA">
+  <img src="https://img.shields.io/badge/FOFA-unlimited%20results-ff4500.svg" alt="FOFA Unlimited">
   <img src="https://img.shields.io/badge/bugs--fixed-17-00d4ff.svg" alt="17 bugs fixed">
 </p>
 
@@ -39,7 +40,7 @@ File / URL  ─┘        |                    |                     |          
 - **X.com Collection** -- Authenticated GraphQL API with dynamic query ID + feature extraction from JS bundle
 - **Multi-source Fallback** -- GraphQL -> Wayback Machine -> Nitter -> Google cache (automatic fallback chain)
 - **Multi-input** -- X.com user timeline, search, direct GTM IDs, file, posts JSON, URL scanning, FOFA search
-- **FOFA Integration** -- Search FOFA (fofa.info) for GTM containers by domain, org, or keyword; auto-scan discovered hosts
+- **FOFA Integration** -- Search FOFA (fofa.info) with cursor-based pagination (`/search/next`) for **unlimited results**; email+key auth; auto-scan all discovered hosts; web scraper fallback (no API key needed)
 - **Container Analysis** -- Domains, URLs, scripts, pixels, tracking IDs (GA4/UA/AW/GTM), 30+ service signatures, custom HTML tags, dataLayer vars, interesting strings (API keys, webhooks, emails)
 - **Deep Mode** -- Follows linked GTM containers found inside other containers (chain analysis)
 - **Reverse Lookup** -- 7 sources: BuiltWith, PublicWWW, SpyOnWeb, Wayback CDX, DuckDuckGo, Google, FOFA
@@ -169,14 +170,16 @@ python3 crawl_gtm.py --bw-login
 
 1. Go to **https://en.fofa.info/** and create an account
 2. Navigate to your **Profile** -> **API Key**
-3. Copy your API key
+3. Copy your **email** and **API key**
 
 ```bash
 python3 crawl_gtm.py --fofa-setup
-# Paste your FOFA API key when prompted
+# Paste your FOFA email and API key when prompted
 ```
 
-Key is saved to `~/.crawlgtm/fofa.json`.
+Key is saved to `~/.crawlgtm/fofa.json`. Email is optional but recommended for full API access.
+
+> **No API key?** FOFA web scraper fallback is used automatically -- limited to ~10 results per query but requires no authentication.
 
 ---
 
@@ -235,21 +238,25 @@ python3 crawl_gtm.py --scan-url https://site1.com https://site2.com
 ### FOFA search
 
 ```bash
+# Search for a specific GTM container across all indexed hosts
+python3 crawl_gtm.py --fofa 'body="GTM-5QGGLMHR"' --fofa-scan
+
 # Search by domain
 python3 crawl_gtm.py --fofa 'domain="example.com"' --deep --fofa-scan
 
 # Search by organization
 python3 crawl_gtm.py --fofa 'org="Company Name"' --deep --reverse-lookup
 
-# Broad GTM discovery (finds pages with GTM in HTTP headers)
-python3 crawl_gtm.py --fofa 'header="GTM-"' --fofa-pages 3 --fofa-scan
+# Broad GTM discovery (finds pages with GTM in body)
+python3 crawl_gtm.py --fofa 'body="GTM-"' --fofa-scan
 
 # Custom FOFA dork
-python3 crawl_gtm.py --fofa '"googletagmanager.com/gtm.js"' --fofa-pages 5 --fofa-scan
+python3 crawl_gtm.py --fofa '"googletagmanager.com/gtm.js"' --fofa-scan
 ```
 
-`--fofa-scan` scans the discovered hosts to extract GTM IDs from their HTML (recommended).
-`--fofa-pages N` controls pagination (default: 5 pages, 100 results/page).
+`--fofa-scan` scans **all** discovered hosts to extract GTM IDs from their HTML (recommended).
+
+FOFA uses cursor-based pagination (`/api/v1/search/next`) to extract **all** results automatically -- no page limits. The `full=true` parameter ensures results include historical data beyond the last year.
 
 ### Full flow
 
@@ -380,6 +387,7 @@ Results are saved to `output/` (configurable with `--output`):
 ~/.crawlgtm/
   session.json              # X.com cookies (auth_token + ct0)
   builtwith_session.json    # BuiltWith cookies
+  fofa.json                 # FOFA API key + email
   telegram.json             # Telegram bot config
   history.json              # Scheduler deduplication state
   scheduler.pid             # Background scheduler PID
@@ -406,8 +414,13 @@ Input Sources:
   --posts-file FILE     JSON file with posts to parse for GTM IDs
   --scan-url, -u URL    URLs to scan for GTM container IDs
 
+FOFA Search:
+  --fofa QUERY            FOFA search query (unlimited results via cursor pagination)
+  --fofa-scan             Scan all FOFA-discovered hosts for GTM IDs
+  --fofa-setup            Configure FOFA API email + key
+
 Analysis Options:
-  --reverse-lookup, -r  Find websites using each GTM (6 OSINT sources)
+  --reverse-lookup, -r  Find websites using each GTM (7 OSINT sources incl. FOFA)
   --deep                Follow linked GTM containers (chain analysis)
   --bw-cookies JSON     BuiltWith cookies as JSON string
 
@@ -429,15 +442,17 @@ Scheduler (Background):
 ## Example Output
 
 ```
-   ▄████▄   ██▀███   ▄▄▄       █     █░ ██▓      ▄████ ▄▄▄█████▓ ███▄ ▄███▓
-  ▒██▀ ▀█  ▓██ ▒ ██▒▒████▄    ▓█░ █ ░█░▓██▒     ██▒ ▀█▒▓  ██▒ ▓▒▓██▒▀█▀ ██▒
-  ▒▓█    ▄ ▓██ ░▄█ ▒▒██  ▀█▄  ▒█░ █ ░█ ▒██░    ▒██░▄▄▄░▒ ▓██░ ▒░▓██    ▓██░
-  ▒▓▓▄ ▄██▒▒██▀▀█▄  ░██▄▄▄▄██ ░█░ █ ░█ ▒██░    ░▓█  ██▓░ ▓██▓ ░ ▒██    ▒██
-  ▒ ▓███▀ ░░██▓ ▒██▒ ▓█   ▓██▒░░██▒██▓ ░██████▒░▒▓███▀▒  ▒██▒ ░ ▒██▒   ░██▒
+╭──────────────────────────────────────────────────────────────╮
+│              crawlGTM :: CTI Monitoring Active               │
+│         Google Tag Manager Intelligence Platform             │
+│                                                              │
+│  Module    OSINT Collection & Container Analysis             │
+│  Sources   X.com | FOFA | BuiltWith | PublicWWW              │
+│  Engine    Async Analysis + Cursor Pagination                │
+│  Status    Operational                                       │
+╰──────────────────────────────────────────────────────────────╯
 
-  GTM OSINT & Reconnaissance Tool
-
-📋 GTM IDs to analyze (1):
+GTM IDs to analyze (1):
   GTM-KX36TXD
 
 Analyzing 1 GTM containers... ━━━━━━━━━━━━━━━━━━━━ 100%
@@ -466,6 +481,25 @@ Analyzing 1 GTM containers... ━━━━━━━━━━━━━━━━�
 ```
 
 ---
+
+## v4.0 Changelog
+
+- **FOFA Unlimited Results** -- Replaced page-based pagination with cursor-based `/api/v1/search/next` (fofaquery approach), extracts **all** results without page limits
+- **FOFA Email+Key Auth** -- Setup now supports email + API key for full API access
+- **FOFA Web Scraper Fallback** -- When no API key is configured, automatically scrapes `en.fofa.info` for results (up to ~10 per query)
+- **FOFA `full=true`** -- API calls now include `full=true` to return historical data beyond the last year
+- **FOFA `body=` Search** -- Fixed search field from `header=` to `body=` (GTM IDs are in HTML body, not headers)
+- **FOFA Error Handling** -- Checks both `error` boolean and `errmsg` string from API responses
+- **No Result Limits** -- Removed all caps: page size 10000, no host scanning limit, no display truncation
+- **GTM ID Extraction from Query** -- Extracts GTM IDs directly from FOFA query string (e.g., `body="GTM-XXXXX"`)
+- **New CTI Banner** -- Random color theme on each launch, clean monitoring-style panel via Rich
+- **Removed ASCII Art** -- Replaced with modern CTI monitoring banner
+
+## v3.0 Changelog
+
+- **FOFA Integration** -- Search FOFA for GTM containers, auto-scan discovered hosts
+- **First-Run Setup Wizard** -- Interactive configuration for X.com, BuiltWith, FOFA, Telegram
+- **Secure API Key Management** -- Encrypted storage for FOFA API keys
 
 ## v2.0 Changelog
 

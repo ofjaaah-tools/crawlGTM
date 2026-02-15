@@ -2020,7 +2020,7 @@ class GTMReverseLookup:
                 "key": fofa_key,
                 "qbase64": qbase64,
                 "fields": "host,link",
-                "size": 100,
+                "size": 10000,
                 "full": "true",
             }
             if fofa_email:
@@ -2243,7 +2243,7 @@ class FofaCollector:
     3. Scan discovered hosts to extract GTM IDs from HTML
     """
 
-    def __init__(self, api_key: str = "", email: str = "", max_pages: int = 5, page_size: int = 100):
+    def __init__(self, api_key: str = "", email: str = "", max_pages: int = 5, page_size: int = 10000):
         if not api_key:
             api_key = load_fofa_key()
         if not email:
@@ -2369,6 +2369,15 @@ class FofaCollector:
         all_hosts = []
         seen_hosts = set()
 
+        # Extract GTM IDs directly from the query itself
+        # (e.g., user searched for body="GTM-5QGGLMHR")
+        for gid in GTM_ID_PATTERN.findall(query):
+            all_gtm_ids.add(gid.upper())
+        if all_gtm_ids:
+            console.print(
+                f"[green]  GTM IDs from query: {', '.join(sorted(all_gtm_ids))}[/]"
+            )
+
         # Build the FOFA query - combine user query with GTM targeting
         query_lower = query.lower()
         if "gtm" not in query_lower and "googletagmanager" not in query_lower:
@@ -2462,7 +2471,7 @@ class FofaCollector:
 
         # Scan discovered hosts for GTM IDs from actual page HTML
         # This is the primary extraction method since body field requires premium
-        hosts_to_scan = all_hosts[:50]  # Limit to avoid abuse
+        hosts_to_scan = all_hosts
         if scan_hosts and hosts_to_scan:
             console.print(f"[cyan]  Scanning {len(hosts_to_scan)} FOFA hosts for GTM IDs...[/]")
             scanned = 0
@@ -2514,7 +2523,7 @@ class FofaCollector:
                 "key": self.api_key,
                 "qbase64": qbase64,
                 "fields": "host,link",
-                "size": 100,
+                "size": 10000,
                 "full": "true",
             }
             if self.email:
@@ -2963,7 +2972,7 @@ def render_results(results: list[dict], posts: list[dict], output_dir: str):
         # Domains
         if r["domains"]:
             dom_branch = tree.add(f"[bold green]🌐 Domains ({len(r['domains'])})[/]")
-            for domain in r["domains"][:50]:
+            for domain in r["domains"]:
                 # Color interesting domains differently
                 if any(
                     kw in domain
@@ -3007,7 +3016,7 @@ def render_results(results: list[dict], posts: list[dict], output_dir: str):
             rev_branch = tree.add(
                 f"[bold red]🔍 Domains Using This GTM ({len(reverse_sites)})[/]"
             )
-            for site in reverse_sites[:50]:
+            for site in reverse_sites:
                 domain = site.get("domain", "?")
                 source = site.get("source", "")
                 extra = ""
@@ -4123,8 +4132,8 @@ Examples:
                 if url:
                     fofa_hosts.append(url)
             if fofa_hosts and args.fofa_scan:
-                console.print(f"[cyan]  Scanning {len(fofa_hosts[:50])} FOFA hosts for GTM IDs...[/]")
-                for host_url in fofa_hosts[:50]:
+                console.print(f"[cyan]  Scanning {len(fofa_hosts)} FOFA hosts for GTM IDs...[/]")
+                for host_url in fofa_hosts:
                     try:
                         host_gtms = scan_url_for_gtm(host_url)
                         if host_gtms:
