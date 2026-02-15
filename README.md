@@ -4,11 +4,12 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/version-2.0-7b2ff7.svg" alt="v2.0">
+  <img src="https://img.shields.io/badge/version-3.0-7b2ff7.svg" alt="v3.0">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/scheduler-background-purple.svg" alt="Background Scheduler">
   <img src="https://img.shields.io/badge/reverse--lookup-BuiltWith-ff0080.svg" alt="BuiltWith">
+  <img src="https://img.shields.io/badge/FOFA-integrated-orange.svg" alt="FOFA">
   <img src="https://img.shields.io/badge/bugs--fixed-17-00d4ff.svg" alt="17 bugs fixed">
 </p>
 
@@ -16,18 +17,19 @@
 
 **Google Tag Manager OSINT & Reconnaissance Tool**
 
-Automated pipeline to collect malicious GTM container IDs from X.com (Twitter) security researchers, analyze the container JavaScript, perform reverse lookups via BuiltWith to discover victim domains, and run on a background scheduler to continuously monitor for new threats.
+Automated pipeline to collect malicious GTM container IDs from X.com (Twitter) security researchers and FOFA search engine, analyze the container JavaScript, perform reverse lookups via BuiltWith + FOFA to discover victim domains, and run on a background scheduler to continuously monitor for new threats.
 
 ---
 
 ## Flow
 
 ```
-X.com Posts --> Extract GTM IDs --> Analyze Containers --> Reverse Lookup --> Victim Domains
-     |               |                    |                     |                  |
-     v               v                    v                     v                  v
- @researcher    GTM-XXXXXXX        Domains, Scripts,     BuiltWith + 5 OSINT    RED output
- GraphQL API    Regex + Deep       Pixels, Services      sources queried        JSON + TXT
+X.com Posts ─┐
+FOFA Search ─┼─> Extract GTM IDs --> Analyze Containers --> Reverse Lookup --> Victim Domains
+File / URL  ─┘        |                    |                     |                  |
+                      v                    v                     v                  v
+                 GTM-XXXXXXX        Domains, Scripts,     BuiltWith + FOFA +    RED output
+                 Regex + Deep       Pixels, Services      5 OSINT sources       JSON + TXT
 ```
 
 ---
@@ -36,15 +38,17 @@ X.com Posts --> Extract GTM IDs --> Analyze Containers --> Reverse Lookup --> Vi
 
 - **X.com Collection** -- Authenticated GraphQL API with dynamic query ID + feature extraction from JS bundle
 - **Multi-source Fallback** -- GraphQL -> Wayback Machine -> Nitter -> Google cache (automatic fallback chain)
-- **Multi-input** -- X.com user timeline, search, direct GTM IDs, file, posts JSON, URL scanning
+- **Multi-input** -- X.com user timeline, search, direct GTM IDs, file, posts JSON, URL scanning, FOFA search
+- **FOFA Integration** -- Search FOFA (fofa.info) for GTM containers by domain, org, or keyword; auto-scan discovered hosts
 - **Container Analysis** -- Domains, URLs, scripts, pixels, tracking IDs (GA4/UA/AW/GTM), 30+ service signatures, custom HTML tags, dataLayer vars, interesting strings (API keys, webhooks, emails)
 - **Deep Mode** -- Follows linked GTM containers found inside other containers (chain analysis)
-- **Reverse Lookup** -- 6 sources: BuiltWith, PublicWWW, SpyOnWeb, Wayback CDX, DuckDuckGo, Google
+- **Reverse Lookup** -- 7 sources: BuiltWith, PublicWWW, SpyOnWeb, Wayback CDX, DuckDuckGo, Google, FOFA
 - **Async Analysis** -- Parallel container fetching via `aiohttp` + `asyncio`
 - **Background Scheduler** -- `--hours N` (1-12) or `--days N` (1-5), daemonizes after first scan
 - **Deduplication** -- Tracks processed posts and GTM IDs across runs, never re-scans what was already done
 - **Telegram Notifications** -- Send results + files to Telegram bot automatically
-- **Session Management** -- Auto-prompt for X.com / BuiltWith sessions, auto-detect expiry, re-prompt
+- **First Run Wizard** -- Interactive setup on first launch: configures X.com, BuiltWith, FOFA, and Telegram
+- **Session Management** -- Auto-prompt for X.com / BuiltWith / FOFA sessions, auto-detect expiry, re-prompt
 
 ---
 
@@ -70,8 +74,9 @@ rich>=13.0.0
 ## Quick Start
 
 ```bash
-# 1. Setup X.com session (one-time)
-python3 crawl_gtm.py --login
+# 1. First run - interactive setup wizard (X.com, BuiltWith, FOFA, Telegram)
+python3 crawl_gtm.py --gtm GTM-XXXXXXX
+# On first launch, the wizard will guide you through configuring all sessions.
 
 # 2. Analyze specific GTM IDs with deep chain analysis
 python3 crawl_gtm.py --gtm GTM-KX36TXD --deep
@@ -79,10 +84,13 @@ python3 crawl_gtm.py --gtm GTM-KX36TXD --deep
 # 3. Scan a website for GTM containers
 python3 crawl_gtm.py --scan-url https://example.com --deep
 
-# 4. Load GTM IDs from file
+# 4. Search FOFA for GTM containers
+python3 crawl_gtm.py --fofa 'domain="example.com"' --deep --fofa-scan
+
+# 5. Load GTM IDs from file
 python3 crawl_gtm.py --file gtm_ids.txt --deep
 
-# 5. Full flow: X.com -> Deep Analysis -> Reverse Lookup
+# 6. Full flow: X.com -> Deep Analysis -> Reverse Lookup
 python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup
 ```
 
@@ -90,7 +98,9 @@ python3 crawl_gtm.py --xuser sdcyberresearch --deep --reverse-lookup
 
 ## Session Setup
 
-The tool requires authenticated sessions for X.com and BuiltWith. On first execution it will auto-prompt for cookies.
+On **first run**, an interactive setup wizard guides you through configuring all integrations (X.com, BuiltWith, FOFA, Telegram). You can skip any step and configure later.
+
+You can also set up each session individually:
 
 ### 1. X.com Session
 
@@ -155,16 +165,32 @@ python3 crawl_gtm.py --bw-login
 
 ---
 
+### 3. FOFA API Key (for GTM discovery)
+
+1. Go to **https://en.fofa.info/** and create an account
+2. Navigate to your **Profile** -> **API Key**
+3. Copy your API key
+
+```bash
+python3 crawl_gtm.py --fofa-setup
+# Paste your FOFA API key when prompted
+```
+
+Key is saved to `~/.crawlgtm/fofa.json`.
+
+---
+
 ### Session Management
 
 ```bash
-python3 crawl_gtm.py --session-status   # Check all sessions
+python3 crawl_gtm.py --session-status   # Check all sessions (X.com, BuiltWith, FOFA)
 python3 crawl_gtm.py --login            # Re-login X.com
 python3 crawl_gtm.py --bw-login         # Re-login BuiltWith
+python3 crawl_gtm.py --fofa-setup       # Re-configure FOFA API key
 python3 crawl_gtm.py --logout           # Clear X.com session
 ```
 
-> **Auto-prompt:** If a session expires mid-scan, the tool detects the failure and asks for new cookies.
+> **Auto-prompt:** If a session expires mid-scan, the tool detects the failure and asks for new cookies/keys.
 
 ---
 
@@ -206,6 +232,25 @@ python3 crawl_gtm.py --scan-url https://example.com --deep
 python3 crawl_gtm.py --scan-url https://site1.com https://site2.com
 ```
 
+### FOFA search
+
+```bash
+# Search by domain
+python3 crawl_gtm.py --fofa 'domain="example.com"' --deep --fofa-scan
+
+# Search by organization
+python3 crawl_gtm.py --fofa 'org="Company Name"' --deep --reverse-lookup
+
+# Broad GTM discovery (finds pages with GTM in HTTP headers)
+python3 crawl_gtm.py --fofa 'header="GTM-"' --fofa-pages 3 --fofa-scan
+
+# Custom FOFA dork
+python3 crawl_gtm.py --fofa '"googletagmanager.com/gtm.js"' --fofa-pages 5 --fofa-scan
+```
+
+`--fofa-scan` scans the discovered hosts to extract GTM IDs from their HTML (recommended).
+`--fofa-pages N` controls pagination (default: 5 pages, 100 results/page).
+
 ### Full flow
 
 ```bash
@@ -216,7 +261,7 @@ This will:
 1. Collect posts from `@sdcyberresearch` containing GTM IDs
 2. Analyze each GTM container (domains, scripts, pixels, services)
 3. Follow linked containers found inside (deep mode chain analysis)
-4. Reverse lookup each container across 6 OSINT sources
+4. Reverse lookup each container across 7 OSINT sources (including FOFA)
 5. Output everything with victim domains highlighted in **RED**
 
 ---
