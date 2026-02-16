@@ -2515,6 +2515,9 @@ class FofaCollector:
             f"[green]  ✓ FOFA: {len(all_gtm_ids)} GTM IDs from headers, "
             f"{len(all_hosts)} unique hosts discovered[/]"
         )
+        if all_hosts:
+            for h in sorted(all_hosts):
+                console.print(f"[dim]    ─ {h}[/]")
 
         # Scan discovered hosts for GTM IDs from actual page HTML
         # This is the primary extraction method since body field requires premium
@@ -2533,10 +2536,18 @@ class FofaCollector:
                         if new_gtms:
                             console.print(
                                 f"    [green]+{len(new_gtms)} GTM IDs from {host_url}: "
-                                f"{', '.join(sorted(new_gtms)[:5])}[/]"
+                                f"{', '.join(sorted(new_gtms))}[/]"
                             )
+                        else:
+                            console.print(
+                                f"    [dim]  ✓ {host_url}: "
+                                f"{', '.join(sorted(host_gtms))}[/]"
+                            )
+                    else:
+                        console.print(f"    [dim]  ─ {host_url}: no GTM found[/]")
                 except Exception:
                     errors += 1
+                    console.print(f"    [yellow]  ✗ {host_url}: unreachable[/]")
             console.print(
                 f"[green]  ✓ Host scanning: {scanned}/{len(hosts_to_scan)} hosts yielded GTM IDs"
                 f"{f', {errors} unreachable' if errors else ''}, "
