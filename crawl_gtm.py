@@ -2425,91 +2425,95 @@ class FofaCollector:
                 f"[green]  GTM IDs from query: {', '.join(sorted(all_gtm_ids))}[/]"
             )
 
-        # Build the FOFA query - combine user query with GTM targeting
+        # Build multiple query variants to maximize extraction
         query_lower = query.lower()
-        if "gtm" not in query_lower and "googletagmanager" not in query_lower:
-            fofa_query = f'{query} && "googletagmanager"'
-        else:
-            fofa_query = query
+        queries = []
 
-        console.print(f"[cyan]  FOFA query: {fofa_query}[/]")
+        # 1. User's original query
+        queries.append(query)
 
-        # Fetch results with header field (available on free tier)
-        results = self._fofa_search(fofa_query, fields="host,title,link,header")
+        # 2. If query contains a GTM ID, also search with different strategies
+        gtm_ids_in_query = GTM_ID_PATTERN.findall(query)
+        if gtm_ids_in_query:
+            for gid in gtm_ids_in_query:
+                gid_upper = gid.upper()
+                # body search
+                bq = f'body="{gid_upper}"'
+                if bq.lower() != query_lower:
+                    queries.append(bq)
+                # header search
+                hq = f'header="{gid_upper}"'
+                if hq.lower() != query_lower:
+                    queries.append(hq)
+                # full-text search
+                fq = f'"{gid_upper}"'
+                if fq.lower() != query_lower:
+                    queries.append(fq)
+                # GTM script URL search
+                queries.append(f'body="gtm.js?id={gid_upper}"')
+                # js_name search
+                queries.append(f'js_name="gtm.js" && body="{gid_upper}"')
+        elif "gtm" not in query_lower and "googletagmanager" not in query_lower:
+            # Generic query without GTM ID - add GTM-specific variants
+            queries.append(f'{query} && body="GTM-"')
+            queries.append(f'{query} && header="GTM-"')
+            queries.append(f'{query} && "googletagmanager"')
 
-        for row in results:
-            host = row[0] if len(row) > 0 else ""
-            title = row[1] if len(row) > 1 else ""
-            link = row[2] if len(row) > 2 else ""
-            header = row[3] if len(row) > 3 else ""
+        # Deduplicate queries (case-insensitive)
+        seen_queries = set()
+        unique_queries = []
+        for q in queries:
+            ql = q.lower().strip()
+            if ql not in seen_queries:
+                seen_queries.add(ql)
+                unique_queries.append(q)
 
-            # Extract GTM IDs from HTTP response headers
-            if header:
-                for gid in GTM_ID_PATTERN.findall(header):
-                    all_gtm_ids.add(gid.upper())
+        def _extract_hosts_and_gtm(results):
+            """Extract GTM IDs and hosts from FOFA results."""
+            for row in results:
+                host = row[0] if len(row) > 0 else ""
+                title = row[1] if len(row) > 1 else ""
+                link = row[2] if len(row) > 2 else ""
+                header = row[3] if len(row) > 3 else ""
+                body = row[4] if len(row) > 4 else ""
 
-            # Extract GTM IDs from page title (rare but possible)
-            if title:
-                for gid in GTM_ID_PATTERN.findall(title):
-                    all_gtm_ids.add(gid.upper())
-
-            # Collect unique host URLs
-            clean_host = ""
-            if link and link.startswith("http"):
-                clean_host = link.strip().rstrip("/")
-            elif host:
-                h = host.strip()
-                # Remove port for hostname-only entries
-                if h.startswith("http"):
-                    clean_host = h.rstrip("/")
-                else:
-                    if ":" in h:
-                        h = h.split(":")[0]
-                    if h and "." in h:
-                        clean_host = f"https://{h}"
-
-            if clean_host and clean_host not in seen_hosts:
-                seen_hosts.add(clean_host)
-                all_hosts.append(clean_host)
-
-        # Fallback: try body and header-specific searches if initial query found no GTM IDs
-        if not all_gtm_ids and not query_lower.startswith(("header=", "body=")):
-            fallback_queries = []
-            if "gtm" not in query_lower:
-                fallback_queries.append(f'{query} && body="GTM-"')
-                fallback_queries.append(f'{query} && header="GTM-"')
-            else:
-                fallback_queries.append(f'body="GTM-" && {query}')
-                fallback_queries.append(f'header="GTM-" && {query}')
-            for fb_query in fallback_queries:
-                console.print(f"[dim]  Fallback search: {fb_query}[/]")
-                fb_results = self._fofa_search(fb_query, fields="host,title,link,header")
-                for row in fb_results:
-                    header = row[3] if len(row) > 3 else ""
-                    if header:
-                        for gid in GTM_ID_PATTERN.findall(header):
+                # Extract GTM IDs from all available fields
+                for field in (header, title, body):
+                    if field:
+                        for gid in GTM_ID_PATTERN.findall(field):
                             all_gtm_ids.add(gid.upper())
-                    title = row[1] if len(row) > 1 else ""
-                    if title:
-                        for gid in GTM_ID_PATTERN.findall(title):
-                            all_gtm_ids.add(gid.upper())
-                    # Add hosts
-                    host = row[0] if len(row) > 0 else ""
-                    link = row[2] if len(row) > 2 else ""
-                    clean_host = ""
-                    if link and link.startswith("http"):
-                        clean_host = link.strip().rstrip("/")
-                    elif host:
-                        h = host.strip()
-                        if h.startswith("http"):
-                            clean_host = h.rstrip("/")
-                        elif "." in h:
-                            clean_host = f"https://{h.split(':')[0]}"
-                    if clean_host and clean_host not in seen_hosts:
-                        seen_hosts.add(clean_host)
-                        all_hosts.append(clean_host)
-                if all_gtm_ids:
-                    break  # Stop fallback if we found GTM IDs
+
+                # Collect unique host URLs
+                clean_host = ""
+                if link and link.startswith("http"):
+                    clean_host = link.strip().rstrip("/")
+                elif host:
+                    h = host.strip()
+                    if h.startswith("http"):
+                        clean_host = h.rstrip("/")
+                    else:
+                        if ":" in h:
+                            h = h.split(":")[0]
+                        if h and "." in h:
+                            clean_host = f"https://{h}"
+
+                if clean_host and clean_host not in seen_hosts:
+                    seen_hosts.add(clean_host)
+                    all_hosts.append(clean_host)
+
+        # Execute all queries and merge results
+        for i, fofa_query in enumerate(unique_queries):
+            label = "Primary" if i == 0 else f"Query {i+1}/{len(unique_queries)}"
+            console.print(f"[cyan]  [{label}] {fofa_query}[/]")
+            results = self._fofa_search(fofa_query, fields="host,title,link,header,body")
+            prev_hosts = len(all_hosts)
+            prev_gtm = len(all_gtm_ids)
+            _extract_hosts_and_gtm(results)
+            new_h = len(all_hosts) - prev_hosts
+            new_g = len(all_gtm_ids) - prev_gtm
+            if new_h or new_g:
+                console.print(f"[dim]    +{new_h} hosts, +{new_g} GTM IDs[/]")
+            time.sleep(0.3)
 
         console.print(
             f"[green]  ✓ FOFA: {len(all_gtm_ids)} GTM IDs from headers, "
